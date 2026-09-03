@@ -165,11 +165,11 @@ export default function UploadPage() {
 
           {/* Requirements file */}
           <div className="form-group">
-            <label htmlFor="req-file">Requirements File (.txt) *</label>
+            <label htmlFor="req-file">Requirements File (.txt, .oml) *</label>
             <input
               id="req-file"
               type="file"
-              accept=".txt"
+              accept=".txt, .oml"
               onChange={(e) => setReqFile(e.target.files[0])}
               disabled={loading}
             />

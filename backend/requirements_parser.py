@@ -1,8 +1,16 @@
 import re
 from typing import List, Dict
 
+def parse_requirements(text: str, filetype: str) -> List[Dict]:
+    match filetype:
+        case ".txt":
+            return _parse_txt_requirements(text)
+        case ".oml":
+            return _parse_oml_requirements(text)
+        case _: 
+            return []
 
-def parse_requirements(text: str) -> List[Dict]:
+def _parse_txt_requirements(text: str) -> List[Dict]:
     """
     Extract numbered requirements from text.
 
@@ -104,6 +112,8 @@ def parse_requirements(text: str) -> List[Dict]:
 
     return requirements
 
+def _parse_oml_requirements() -> List[dict]:
+    pass
 
 def validate_requirements(requirements: List[Dict]) -> Dict:
     """Validate parsed requirements."""
@@ -111,8 +121,10 @@ def validate_requirements(requirements: List[Dict]) -> Dict:
         return {
             'valid': False,
             'error': (
-                'No requirements found. Supported formats include: '
+                'No requirements found. Supported .txt formats include: '
                 '"1. text", "REQ-001: text", "FR.1: text", "R1: text", etc.'
+                '\n.oml files must use a req:Requirement alongside tlo:hasID and '
+                'tlo:hasNaturalLangaugeDescription'
             )
         }
 
