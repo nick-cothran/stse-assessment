@@ -142,17 +142,21 @@ def _call_ai(prompt: str, provider: str = None, api_key: str = None) -> str:
         ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
         payload = json.dumps({
             "model": ollama_model,
-            "prompt": prompt,
+            "messages": [{"role": "user", "content": prompt}],
             "stream": False,
+            "options": {
+                "temperature": 0.1,
+                "num_predict": 1200
+            }
         }).encode("utf-8")
         req = urllib.request.Request(
-            f"{ollama_url}/api/generate",
+            f"{ollama_url}/api/chat",
             data=payload,
             headers={"Content-Type": "application/json"},
         )
         with urllib.request.urlopen(req, timeout=300) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        return data["response"].strip()
+        return data["message"]["content"].strip()
 
     else:
         raise ValueError(f"Unknown AI_PROVIDER: '{provider}'. Must be anthropic, openai, or ollama.")

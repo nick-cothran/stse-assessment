@@ -10,6 +10,9 @@ import time
 from collections import defaultdict
 from pathlib import Path
 from dotenv import load_dotenv
+import urllib.request
+
+import socket
 
 from requirements_parser import parse_requirements, validate_requirements
 from ai_analyzer import analyze_all_requirements
@@ -87,23 +90,45 @@ FRONTEND_DIST = BASE_DIR / 'frontend' / 'dist'
 PROVIDER_ENV_KEYS = {
     'anthropic': 'ANTHROPIC_API_KEY',
     'openai': 'OPENAI_API_KEY',
+    'ollama': "OLLAMA_URL",
 }
 
-PROVIDER_LABELS = {
-    'anthropic': 'Claude (Anthropic)',
-    'openai': 'GPT-4o (OpenAI)',
-}
 
+def _get_provider_labels() -> dict:
+    current_ollama_model = os.getenv("OLLAMA_MODEL", "Local model")
+    return {
+        'anthropic': 'Claude (Anthropic)',
+        'openai': 'GPT-4o (OpenAI)',
+        'ollama': f"{current_ollama_model} (Ollama)"
+    }
 
 def _server_api_key(provider: str) -> str:
     """Return the operator-configured key for a provider, or '' if unset."""
     env_var = PROVIDER_ENV_KEYS.get(provider)
     return os.getenv(env_var, '').strip() if env_var else ''
 
+def _is_ollama_running() -> bool: 
+    """Returns whether or not ollama is running. If it is not, then it will not be listed as an available provider. It does
+    this by using checking if the ollama port will accept a TCP connection. If it cannot connect, then it will timeout, showing that ollama 
+    is not running. This has been much faster than calling ollama's '/' endpoint."""
+    ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+    if not ollama_url:
+        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.01) 
+        is_up = s.connect_ex(("127.0.0.1", 11434)) == 0
+    return is_up
 
 def _available_providers() -> list:
     """Providers that currently have a key configured on the server."""
-    return [p for p in PROVIDER_ENV_KEYS if _server_api_key(p)]
+    available = []
+    for p in PROVIDER_ENV_KEYS:
+        if p == "ollama":
+            if _is_ollama_running():
+                available.append(p)
+        elif _server_api_key(p):
+            available.append(p)
+    return available
 
 
 # ===========================================================
@@ -256,11 +281,12 @@ def get_config():
     if provider not in available:
         provider = available[0] if available else provider
 
+    provider_labels = _get_provider_labels()
     return {
         "provider": provider,
-        "model_label": PROVIDER_LABELS.get(provider, provider),
+        "model_label": provider_labels.get(provider, provider),
         "providers": [
-            {"value": p, "label": PROVIDER_LABELS.get(p, p)} for p in available
+            {"value": p, "label": provider_labels.get(p, p)} for p in available
         ],
         "ready": bool(available),
         "auth_required": bool(_get_access_code()),
@@ -287,7 +313,7 @@ async def upload_files(
         raise HTTPException(
             status_code=503,
             detail=(
-                f"{PROVIDER_LABELS[provider]} is not configured on this server. "
+                f"{_get_provider_labels()[provider]} is not configured on this server. "
                 f"Set {PROVIDER_ENV_KEYS[provider]} in the deployment environment."
             ),
         )
