@@ -112,16 +112,25 @@ def _parse_txt_requirements(text: str) -> List[Dict]:
 
     return requirements
 
+def _remove_comments(text: str) -> str: 
+    # groups 1 and 2 represent the text that is not a comment, 3 and 4 are /* */ and // comments respectively
+    non_comment_pattern = re.compile(r'("(?:\\.|[^"\\])*")|(<[^>]+>)|(/\*.*?\*/)|(//.*?$)', re.MULTILINE | re.DOTALL)
+    # groups 1 and 2 are replaced with themselves, comments are replaced with ' '
+    return non_comment_pattern.sub(lambda m: m.group(1) or m.group(2) or ' ', text)
+
 def _parse_oml_requirements(text: str) -> List[dict]:
     requirements = []
-    instance_regex = re.compile(r'instance [a-zA-Z0-9-]+ : req:Requirement \[')
+    text = _remove_comments(text)
+    instance_regex = re.compile(r'instance\s+[a-zA-Z0-9-_]+\s*:\s*([a-zA-Z0-9,:\s]+)\s*\[')
     tlo_regex = re.compile(r'tlo:([a-zA-Z]+)\s+"((?:[^"\\]|\\.)*)"')
     curr_char = 0
     total_len = len(text)
     while curr_char < total_len:
         curr_match = instance_regex.search(text, curr_char)
+
         if not curr_match: # end early if there are no more instance blocks
             break
+
         body_start = curr_match.end()
         curr_char = body_start
 
@@ -144,13 +153,17 @@ def _parse_oml_requirements(text: str) -> List[dict]:
                     depth -= 1
             scan += 1
         if depth == 0:
-            block_body = text[body_start:scan-1]
-            fields = dict(tlo_regex.findall(block_body))
+            curr_char = scan
 
-            # unescape and strip text to simplify prompts 
-            for key, val in fields:
-                cleaned = val.replace('\\"', '"').replace('\\\\', '\\').strip()
-                fields[key] = cleaned
+            # don't save requirement if it isn't actually a requirement 
+            if "req:Requirement" not in curr_match.group(1): 
+                continue
+            
+            block_body = text[body_start:scan-1]
+
+            # search for the different tlo: fields, and unescape and strip them in order to simplify prompts 
+            fields = {key: val.replace('\\"', '"').replace('\\\\', '\\').strip() for key, val in tlo_regex.findall(block_body)}
+
             req_id = fields.get("hasID")
             req_text = fields.get("hasNaturalLanguageDescription")
             
@@ -158,10 +171,11 @@ def _parse_oml_requirements(text: str) -> List[dict]:
                 continue
 
             curr_req = {"id": req_id, "text": req_text}
-            if "hasName" in fields:
+            if fields.get("hasName", "").strip():
                 curr_req["category"] = fields["hasName"]
 
             requirements.append(curr_req)
+            
         else:
             break
     print(requirements)
