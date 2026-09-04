@@ -112,8 +112,60 @@ def _parse_txt_requirements(text: str) -> List[Dict]:
 
     return requirements
 
-def _parse_oml_requirements() -> List[dict]:
-    pass
+def _parse_oml_requirements(text: str) -> List[dict]:
+    requirements = []
+    instance_regex = re.compile(r'instance [a-zA-Z0-9-]+ : req:Requirement \[')
+    tlo_regex = re.compile(r'tlo:([a-zA-Z]+)\s+"((?:[^"\\]|\\.)*)"')
+    curr_char = 0
+    total_len = len(text)
+    while curr_char < total_len:
+        curr_match = instance_regex.search(text, curr_char)
+        if not curr_match: # end early if there are no more instance blocks
+            break
+        body_start = curr_match.end()
+        curr_char = body_start
+
+        depth = 1
+        in_string = False
+        is_escaped = False
+        scan = body_start
+        while scan < total_len and depth > 0:
+            c = text[scan]
+            if is_escaped: # ignore current character since last was escaped
+                is_escaped = False
+            elif c == '\\' and in_string:
+                is_escaped = True
+            elif c == '"':
+                in_string = not in_string
+            elif not in_string:
+                if c == '[':
+                    depth += 1
+                elif c == ']':
+                    depth -= 1
+            scan += 1
+        if depth == 0:
+            block_body = text[body_start:scan-1]
+            fields = dict(tlo_regex.findall(block_body))
+
+            # unescape and strip text to simplify prompts 
+            for key, val in fields:
+                cleaned = val.replace('\\"', '"').replace('\\\\', '\\').strip()
+                fields[key] = cleaned
+            req_id = fields.get("hasID")
+            req_text = fields.get("hasNaturalLanguageDescription")
+            
+            if not (req_id and req_text): # invalid requirement, so we'll just skip this one
+                continue
+
+            curr_req = {"id": req_id, "text": req_text}
+            if "hasName" in fields:
+                curr_req["category"] = fields["hasName"]
+
+            requirements.append(curr_req)
+        else:
+            break
+    print(requirements)
+    return requirements
 
 def validate_requirements(requirements: List[Dict]) -> Dict:
     """Validate parsed requirements."""
@@ -121,9 +173,9 @@ def validate_requirements(requirements: List[Dict]) -> Dict:
         return {
             'valid': False,
             'error': (
-                'No requirements found. Supported .txt formats include: '
+                'No requirements found. Supported TXT formats include: '
                 '"1. text", "REQ-001: text", "FR.1: text", "R1: text", etc.'
-                '\n.oml files must use a req:Requirement alongside tlo:hasID and '
+                'OML files must use a req:Requirement alongside tlo:hasID and '
                 'tlo:hasNaturalLangaugeDescription'
             )
         }

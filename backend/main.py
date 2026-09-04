@@ -10,8 +10,6 @@ import time
 from collections import defaultdict
 from pathlib import Path
 from dotenv import load_dotenv
-import urllib.request
-
 import socket
 
 from requirements_parser import parse_requirements, validate_requirements
@@ -325,6 +323,7 @@ async def upload_files(
 
     # Read requirements file into memory (never written to disk)
     content = await requirements_file.read()
+    req_file_type = Path(requirements_file.filename or "").suffix.lower()
 
     # Read context file if provided (in memory only)
     context_text = ""
@@ -334,7 +333,7 @@ async def upload_files(
 
     # Parse requirements
     req_text = content.decode('utf-8', errors='replace')
-    requirements = parse_requirements(req_text)
+    requirements = parse_requirements(req_text, req_file_type)
     validation = validate_requirements(requirements)
 
     if not validation['valid']:
