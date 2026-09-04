@@ -1,7 +1,19 @@
 import re
 from typing import List, Dict
 
+
 def parse_requirements(text: str, filetype: str) -> List[Dict]:
+    """ Parses text files.
+    
+    Parses the requirements from a file into the form that the LLM can use. Currently supports .oml and .txt.
+
+    Args:
+        text: the file to parse
+        filetype: the filetype of the file that you are parsing
+    Returns:
+        A list of dicts representing the requirements. Each requirement dict has its ID, its text, 
+        and optionally its category.
+    """
     match filetype:
         case ".txt":
             return _parse_txt_requirements(text)
@@ -12,7 +24,7 @@ def parse_requirements(text: str, filetype: str) -> List[Dict]:
 
 def _parse_txt_requirements(text: str) -> List[Dict]:
     """
-    Extract numbered requirements from text.
+    Extract numbered requirements from a txt file.
 
     Handles a broad range of formats, e.g.:
       1. The system shall...
@@ -113,16 +125,33 @@ def _parse_txt_requirements(text: str) -> List[Dict]:
     return requirements
 
 def _remove_comments(text: str) -> str: 
+    """Removes // and /* */ comments from text. Comments inside of quotations will be ignored. """
     # groups 1 and 2 represent the text that is not a comment, 3 and 4 are /* */ and // comments respectively
     non_comment_pattern = re.compile(r'("(?:\\.|[^"\\])*")|(<[^>]+>)|(/\*.*?\*/)|(//.*?$)', re.MULTILINE | re.DOTALL)
     # groups 1 and 2 are replaced with themselves, comments are replaced with ' '
     return non_comment_pattern.sub(lambda m: m.group(1) or m.group(2) or ' ', text)
 
 def _parse_oml_requirements(text: str) -> List[dict]:
+    """ Parses an oml file. 
+
+    Parses the string representation of an .oml file. This parser expects the following form for requirements:
+    instance item-# : req:Requirement [
+        tlo:hasName "nameHere"
+        tlo:hasID "IdHere"
+        tlo:hasNaturalLanguageDescription "Requirement text here"
+    ]
+    Works by scanning for the instance item-# headers, then for each it finds the closing square brackets. Once that is done, the fields 
+    are parsed and added to the requirements list similarly to the txt parser. 
+
+    Args:
+        text: The text representation of the .oml file being parsed.
+    """
     requirements = []
     text = _remove_comments(text)
-    instance_regex = re.compile(r'instance\s+[a-zA-Z0-9-_]+\s*:\s*([a-zA-Z0-9,:\s]+)\s*\[')
-    tlo_regex = re.compile(r'tlo:([a-zA-Z]+)\s+"((?:[^"\\]|\\.)*)"')
+
+    instance_regex = re.compile(r'instance\s+[a-zA-Z0-9-_]+\s*:\s*([a-zA-Z0-9,:\s]+)\s*\[') # matches the instance item-# headers
+    tlo_regex = re.compile(r'tlo:([a-zA-Z]+)\s+"((?:[^"\\]|\\.)*)"') # matches the tlo:hasName/hasId/etc. fields
+
     curr_char = 0
     total_len = len(text)
     while curr_char < total_len:
@@ -134,6 +163,8 @@ def _parse_oml_requirements(text: str) -> List[dict]:
         body_start = curr_match.end()
         curr_char = body_start
 
+        # Scans through block until closing square bracket is found. Square brackets are ignored if they are within one of the
+        # tlo field's double quotes. Handles escaped double quotes. 
         depth = 1
         in_string = False
         is_escaped = False
@@ -171,14 +202,12 @@ def _parse_oml_requirements(text: str) -> List[dict]:
                 continue
 
             curr_req = {"id": req_id, "text": req_text}
-            if fields.get("hasName", "").strip():
+            if fields.get("hasName", "").strip(): # add category if the hasName field is present and non-empty
                 curr_req["category"] = fields["hasName"]
 
             requirements.append(curr_req)
-            
-        else:
+        else: # no closing bracket (invalid oml file)
             break
-    print(requirements)
     return requirements
 
 def validate_requirements(requirements: List[Dict]) -> Dict:

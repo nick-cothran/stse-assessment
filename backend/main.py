@@ -93,6 +93,8 @@ PROVIDER_ENV_KEYS = {
 
 
 def _get_provider_labels() -> dict:
+    """Returns the model labels for the frontend. Loads the model label from the env var for ollama, since
+    it is chosen from there. This should likely be done for the other models later on. """
     current_ollama_model = os.getenv("OLLAMA_MODEL", "Local model")
     return {
         'anthropic': 'Claude (Anthropic)',

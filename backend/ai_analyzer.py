@@ -137,8 +137,8 @@ def _call_ai(prompt: str, provider: str = None, api_key: str = None) -> str:
         )
         return response.choices[0].message.content.strip()
 
-    elif provider == "ollama":
-        ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+    elif provider == "ollama": # local model option 
+        ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
         ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
         payload = json.dumps({
             "model": ollama_model,
@@ -154,7 +154,7 @@ def _call_ai(prompt: str, provider: str = None, api_key: str = None) -> str:
             data=payload,
             headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=300) as resp:
+        with urllib.request.urlopen(req, timeout=600) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         return data["message"]["content"].strip()
 
