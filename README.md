@@ -14,7 +14,9 @@ You need three things:
 
 1. **A GitHub account** — this is where the code lives.
 2. **A Render account** — sign up free at https://render.com and connect it to GitHub.
-3. **An Anthropic API key with credit on it** — this is what pays for the analysis.
+3. At least one of the following
+    - **An Anthropic API key with credit on it** — this is what pays for the analysis.
+    - Ollama installed and running on your computer; this is for local analysis.
 
 The API key is yours. Every analysis anyone runs on your site is charged to your account, so keep the key private.
 
@@ -39,7 +41,17 @@ While you are there, set a **monthly spending limit**. The app has no way to sto
 
 ---
 
-## Step 3 — Create the service on Render
+## Step 3 — Install Ollama
+1. Install Ollama from their [website](https://ollama.com).
+2. Install your desired local model using `ollama pull modelName` in your terminal.
+3. In your .env file, ensure the OLLAMA_MODEL is the same as the model you installed.
+4. Ensure Ollama is running by checking the system tray. If it is not, you can run it by opening the application, or running `ollama serve` in your terminal. 
+
+Your Ollama model should now show as an option you can choose from on the website.
+
+---
+
+## Step 4 — Create the service on Render
 
 In Render, click **New +**, then **Web Service**. Pick your forked repository.
 
@@ -72,7 +84,7 @@ cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
 
 ---
 
-## Step 4 — Add the settings
+## Step 5 — Add the settings
 
 Still on the same page, find the **Environment Variables** section. Add each of these. Click "Add Environment Variable" for each new one.
 
@@ -80,17 +92,19 @@ Still on the same page, find the **Environment Variables** section. Add each of 
 |---|---|---|
 | `ANTHROPIC_API_KEY` | your `sk-ant-...` key | Pays for the analysis. Required. |
 | `ACCESS_CODE` | a password you invent, like `orion-review-2026` | Stops strangers from using your site and spending your money. **Do not skip this.** |
-| `AI_PROVIDER` | `anthropic` | Tells the app to use Claude. |
+| `AI_PROVIDER` | `anthropic` | Tells the app to use Claude by default. |
 | `PYTHON_VERSION` | `3.12` | Which Python to use. |
 | `NODE_VERSION` | `20` | Which Node to use. Also makes Node available when building. |
 | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` | `1` | Stops the build downloading 150 MB of test browsers it will never use. |
 | `PYTHONUNBUFFERED` | `1` | Makes the app's messages show up in the Render log. Without it they get held in memory and you never see them. |
+| `OLLAMA_URL` | The URL that Ollama points to, by default this should be `http://localhost:11434` | Connects the application to Ollama for local analysis.
+| `OLLAMA_MODEL` | The Ollama model you want to use | Chooses the Ollama model for local analysis. 
 
 Now click **Create Web Service**. The first build takes about 5 minutes.
 
 ---
 
-## Step 5 — Check that it worked
+## Step 6 — Check that it worked
 
 Watch the log while it builds. You are looking for these lines:
 
