@@ -56,21 +56,15 @@ def _build_criteria_text() -> str:
 CRITERIA_TEXT = _build_criteria_text()
 
 
-def _build_prompt(requirement: Dict, context: str) -> str:
+def _build_system_prompt() -> str:
     return f"""You are an expert requirements engineer. Evaluate the requirement below against each INCOSE criterion.
-
-System Context: {context.strip() if context else "No additional context provided."}
-
-Requirement:
-ID: {requirement['id']}
-Text: "{requirement['text']}"
 
 Criteria to evaluate:
 {CRITERIA_TEXT}
 
 Your job — for each criterion:
 1. Decide: satisfied (true/false).
-2. Write a 1–2 sentence explanation of why.
+2. Write a 1–2 sentence explanation of why. Be brief.
 3. If violated: identify the EXACT verbatim substring from the requirement that is the problem (affected_text), and provide a concise improved replacement for ONLY that substring (suggested_replacement). Do not rewrite the whole requirement. Both affected_text and suggested_replacement are REQUIRED when satisfied is false — never leave them null on a violation.
 4. If satisfied: affected_text and suggested_replacement are null.
 
@@ -97,6 +91,13 @@ Output ONLY valid JSON — no markdown, no preamble:
 
 Return one entry per criterion in order: {', '.join(CRITERIA_ORDER)}."""
 
+def _build_requirement_prompt(requirement: Dict):
+    return f"""Requirement:
+ID: {requirement['id']}
+Text: "{requirement['text']}"""
+
+def _build_context_prompt(context: str):
+    return f"""System Context: {context.strip() if context else "No additional context provided."}"""
 
 # ---------------------------------------------------------------------------
 # Single-requirement analysis
@@ -107,8 +108,16 @@ def get_provider() -> str:
     return os.getenv("AI_PROVIDER", "anthropic").strip().lower()
 
 
-def _call_ai(prompt: str, provider: str = None, api_key: str = None) -> str:
+def _call_ai(requirement: Dict, context: str, provider: str = None, api_key: str = None) -> str:
     """Route to Anthropic, OpenAI, or Ollama. Uses env vars by default."""
+
+    system_prompt = _build_system_prompt()
+    context_prompt = _build_context_prompt(context)
+    requirement_prompt = _build_requirement_prompt(requirement)
+
+    prompt = system_prompt + "\n\n" + context_prompt + "\n\n" + requirement_prompt
+    #print(f"Prompt:\n\n{prompt}")
+
     provider = (provider or get_provider()).lower()
 
     if provider == "anthropic":
@@ -117,11 +126,29 @@ def _call_ai(prompt: str, provider: str = None, api_key: str = None) -> str:
             raise ValueError("ANTHROPIC_API_KEY is not set in .env")
         client = anthropic.Anthropic(api_key=key)
         response = client.messages.create(
-            model="claude-sonnet-4-5",
-            max_tokens=1200,
-            temperature=0.1,
-            messages=[{"role": "user", "content": prompt}],
+            model="claude-sonnet-5",
+            max_tokens=2000,
+            thinking={"type": "disabled"},
+            system=[
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ],
+            messages=[{"role": "user", "content": [
+                {
+                    "type": "text",
+                    "text": context_prompt,
+                    "cache_control": {"type": "ephemeral"}
+                },
+                {
+                    "type": "text",
+                    "text": requirement_prompt,
+                }
+            ]}],
         )
+        print(response.usage)
         return response.content[0].text.strip()
 
     elif provider == "openai":
@@ -163,10 +190,10 @@ def _call_ai(prompt: str, provider: str = None, api_key: str = None) -> str:
 
 
 def analyze_requirement(requirement: Dict, context: str, provider: str = None, api_key: str = None) -> Dict:
-    prompt = _build_prompt(requirement, context)
 
     try:
-        result_text = _call_ai(prompt, provider, api_key)
+        result_text = _call_ai(requirement, context, provider, api_key)
+        #print(f"result {requirement}: {result_text}")
         if result_text.startswith("```"):
             lines = result_text.split("\n")
             inner = lines[1:]
@@ -223,8 +250,10 @@ def analyze_requirement(requirement: Dict, context: str, provider: str = None, a
         }
 
     except json.JSONDecodeError as e:
+        print(f"parse failure: {e}")
         return _error_result(requirement, f"Failed to parse AI response: {e}")
     except Exception as e:
+        print(f"other error: {e}")
         return _error_result(requirement, f"Analysis failed: {e}")
 
 
@@ -264,21 +293,42 @@ def analyze_all_requirements(
 
     analyzed: List[Optional[Dict]] = [None] * len(requirements)
 
-    with ThreadPoolExecutor(max_workers=min(10, len(requirements))) as executor:
-        future_to_index = {
-            executor.submit(analyze_requirement, req, context, provider, api_key): i
-            for i, req in enumerate(requirements)
-        }
-        for future in as_completed(future_to_index):
-            i = future_to_index[future]
-            req = requirements[i]
-            try:
-                result = future.result()
-            except Exception as e:
-                result = _error_result(req, str(e))
-            analyzed[i] = result
-            n = sum(1 for ev in result.get("criteria_evaluations", []) if not ev["satisfied"])
-            print(f"  [{result['req_id']}] done — {n} criteria violated")
+    if not requirements:
+         return {
+                "session_id": session_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "context": context,
+                "rag_enhanced": False,
+                "requirements": analyzed,
+            }
+
+    first_req = requirements[0]
+    try:
+        res0 = analyze_requirement(first_req, context, provider, api_key)
+    except Exception as e:
+        res0 = _error_result(first_req, str(e))
+    analyzed[0] = res0
+    n = sum(
+        1 for ev in res0.get("criteria_evaluations", []) if not ev["satisfied"]
+    )
+    print(f"  [{res0.get('req_id', 0)}] done — {n} criteria violated")
+
+    if len(requirements) > 1:
+        with ThreadPoolExecutor(max_workers=min(10, len(requirements))) as executor:
+            future_to_index = {
+                executor.submit(analyze_requirement, req, context, provider, api_key): i
+                for i, req in enumerate(requirements) if i > 0
+            }
+            for future in as_completed(future_to_index):
+                i = future_to_index[future]
+                req = requirements[i]
+                try:
+                    result = future.result()
+                except Exception as e:
+                    result = _error_result(req, str(e))
+                analyzed[i] = result
+                n = sum(1 for ev in result.get("criteria_evaluations", []) if not ev["satisfied"])
+                print(f"  [{result['req_id']}] done — {n} criteria violated")
 
     return {
         "session_id": session_id,
