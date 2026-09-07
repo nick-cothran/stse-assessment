@@ -193,7 +193,7 @@ def analyze_requirement(requirement: Dict, context: str, provider: str = None, a
 
     try:
         result_text = _call_ai(requirement, context, provider, api_key)
-        print(f"result {requirement}: {result_text}")
+        fprint(f"result {requirement}: {result_text}")
         if result_text.startswith("```"):
             lines = result_text.split("\n")
             inner = lines[1:]
