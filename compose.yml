@@ -1,0 +1,19 @@
+services:
+  backend:
+    build: ./backend
+    container_name: fastapi_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - AI_PROVIDER=anthropic
+      - ANTHROPIC_API_KEY=sk-key-here
+      - OPENAI_API_KEY=sk-YOUR-KEY-HERE
+    restart: unless-stopped
+  frontend:
+    build: ./frontend
+    container_name: react_frontend
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

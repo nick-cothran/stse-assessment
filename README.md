@@ -60,7 +60,7 @@ Now fill in the form. Most of it you can leave alone. These are the boxes that m
 | Box | What to put in it |
 |---|---|
 | **Name** | `incose-analyzer`, or any name you like. This becomes your web address, so it has to be unique. If the name is taken, add a number. |
-| **Language** | **Python 3**. Not Node, not Docker. |
+| **Language** | **Python 3** |
 | **Branch** | `main` |
 | **Region** | Whichever one is closest to the people who will use it. You cannot change this later. |
 | **Root Directory** | Leave this **empty**. |
