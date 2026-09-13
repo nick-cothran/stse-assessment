@@ -1,3 +1,5 @@
+x-model: &ollama_model "llama3.2:3b"
+
 services:
   backend:
     build: ./backend
@@ -7,8 +9,15 @@ services:
     volumes:
       - backend_data:/app/data
     environment:
-      - AI_PROVIDER=anthropic
+      OLLAMA_MODEL: *ollama_model
+      AI_PROVIDER: anthropic
+      OLLAMA_URL: http://ollama:11434
+    depends_on:
+      ollama-model-install:
+        condition: service_completed_successfully
+        required: false
     restart: unless-stopped
+
   frontend:
     build: ./frontend
     container_name: react_frontend
@@ -18,6 +27,40 @@ services:
       - backend
     restart: unless-stopped
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama_local_models
+    ports:
+      - "11434:11434"
+    volumes:
+      - "ollama_models:/root/.ollama"
+    profiles: ["local-model"]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 60s
+      start_interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 2s
+    restart: unless-stopped
+
+    # installs model once ollama is ready. if model has already been installed in the volume,
+    # it will not be reinstalled.
+  ollama-model-install:
+    image: ollama/ollama:latest
+    container_name: ollama_model_installer
+    volumes:
+      - "ollama_models:/root/.ollama"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    command: ["pull", *ollama_model]
+    profiles: ["local-model"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+
 volumes:
   backend_data:
     name: persistent_data
+  ollama_models:
+    name: ollama_data

@@ -223,8 +223,10 @@ def analyze_requirement(requirement: Dict, context: str, provider: str = None, a
         }
 
     except json.JSONDecodeError as e:
+        print(f"json error: {e}")
         return _error_result(requirement, f"Failed to parse AI response: {e}")
     except Exception as e:
+        print(f"error 2: {e}")
         return _error_result(requirement, f"Analysis failed: {e}")
 
 

@@ -11,6 +11,7 @@ from collections import defaultdict
 from pathlib import Path
 from dotenv import load_dotenv
 import socket
+from urllib.parse import urlparse
 import json
 
 from requirements_parser import parse_requirements, validate_requirements
@@ -135,9 +136,14 @@ def _is_ollama_running() -> bool:
     ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
     if not ollama_url:
         return False
+    
+    parsed_url = urlparse(ollama_url)
+    host = parsed_url.hostname
+    port = parsed_url.port
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.settimeout(0.01) 
-        is_up = s.connect_ex(("127.0.0.1", 11434)) == 0
+        is_up = s.connect_ex((host, port)) == 0
     return is_up
 
 def _available_providers() -> list:
@@ -372,7 +378,7 @@ async def upload_files(
         raise HTTPException(status_code=400, detail=f"Unsupported AI provider '{provider}'.")
 
     api_key = _server_api_key(provider)
-    if not api_key and api_key != "ollama":
+    if not api_key and provider != "ollama":
         raise HTTPException(
             status_code=503,
             detail=(
@@ -427,6 +433,7 @@ async def upload_files(
             "rag_enhanced": analysis.get('rag_enhanced', False)
         }
     except Exception as e:
+        print(f"ERROR: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 @app.get("/api/analysis/{session_id}")
