@@ -56,21 +56,15 @@ def _build_criteria_text() -> str:
 CRITERIA_TEXT = _build_criteria_text()
 
 
-def _build_prompt(requirement: Dict, context: str) -> str:
+def _build_system_prompt() -> str:
     return f"""You are an expert requirements engineer. Evaluate the requirement below against each INCOSE criterion.
-
-System Context: {context.strip() if context else "No additional context provided."}
-
-Requirement:
-ID: {requirement['id']}
-Text: "{requirement['text']}"
 
 Criteria to evaluate:
 {CRITERIA_TEXT}
 
 Your job — for each criterion:
 1. Decide: satisfied (true/false).
-2. Write a 1–2 sentence explanation of why.
+2. Write a 1–2 sentence explanation of why. Be brief.
 3. If violated: identify the EXACT verbatim substring from the requirement that is the problem (affected_text), and provide a concise improved replacement for ONLY that substring (suggested_replacement). Do not rewrite the whole requirement. Both affected_text and suggested_replacement are REQUIRED when satisfied is false — never leave them null on a violation.
 4. If satisfied: affected_text and suggested_replacement are null.
 
@@ -97,6 +91,13 @@ Output ONLY valid JSON — no markdown, no preamble:
 
 Return one entry per criterion in order: {', '.join(CRITERIA_ORDER)}."""
 
+def _build_requirement_prompt(requirement: Dict):
+    return f"""Requirement:
+ID: {requirement['id']}
+Text: "{requirement['text']}"""
+
+def _build_context_prompt(context: str):
+    return f"""System Context: {context.strip() if context else "No additional context provided."}"""
 
 # ---------------------------------------------------------------------------
 # Single-requirement analysis
@@ -107,33 +108,67 @@ def get_provider() -> str:
     return os.getenv("AI_PROVIDER", "anthropic").strip().lower()
 
 
-def _call_ai(prompt: str, provider: str = None, api_key: str = None) -> str:
+def _call_ai(requirement: Dict, context: str, provider: str = None, api_key: str = None) -> str:
     """Route to Anthropic, OpenAI, or Ollama. Uses env vars by default."""
+
+    system_prompt = _build_system_prompt()
+    context_prompt = _build_context_prompt(context)
+    requirement_prompt = _build_requirement_prompt(requirement)
+
     provider = (provider or get_provider()).lower()
 
     if provider == "anthropic":
         anthropic_model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
-        if not api_key:
+        key = api_key or os.getenv("ANTHROPIC_API_KEY", "").strip()
+        if not key:
             raise ValueError("ANTHROPIC_API_KEY is not set")
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=anthropic_model,
-            max_tokens=1200,
-            temperature=0.1,
-            messages=[{"role": "user", "content": prompt}],
+            max_tokens=2000,
+            thinking={"type": "disabled"},
+            system=[
+                {
+                    "type": "text",
+                    "text": system_prompt,
+                    "cache_control": {"type": "ephemeral"}
+                }
+            ],
+            messages=[{"role": "user", "content": [
+                {
+                    "type": "text",
+                    "text": context_prompt,
+                    "cache_control": {"type": "ephemeral"}
+                },
+                {
+                    "type": "text",
+                    "text": requirement_prompt,
+                }
+            ]}],
         )
         return response.content[0].text.strip()
 
     elif provider == "openai":
         openai_model = os.getenv("OPENAI_MODEL", "gpt-4o")
-        if not api_key:
+        key = api_key or os.getenv("OPENAI_API_KEY", "").strip()
+        if not key:
             raise ValueError("OPENAI_API_KEY is not set in .env")
         client = openai_lib.OpenAI(api_key=api_key)
         response = client.chat.completions.create(
             model=openai_model,
             max_tokens=1200,
             temperature=0.1,
-            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"{system_prompt}\n\n{context_prompt}"
+                },
+                {
+                    "role": "user", 
+                    "content": requirement_prompt
+                }
+            ],
         )
         return response.choices[0].message.content.strip()
 
@@ -142,11 +177,22 @@ def _call_ai(prompt: str, provider: str = None, api_key: str = None) -> str:
         ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
         payload = json.dumps({
             "model": ollama_model,
-            "messages": [{"role": "user", "content": prompt}],
+            "format": "json",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": f"{system_prompt}\n\n{context_prompt}"
+                },
+                {
+                    "role": "user", 
+                    "content": requirement_prompt
+                }
+            ],
             "stream": False,
             "options": {
                 "temperature": 0.1,
-                "num_predict": 1200
+                "num_predict": 1200,
+                "num_ctx": 4096
             }
         }).encode("utf-8")
         req = urllib.request.Request(
@@ -163,10 +209,8 @@ def _call_ai(prompt: str, provider: str = None, api_key: str = None) -> str:
 
 
 def analyze_requirement(requirement: Dict, context: str, provider: str = None, api_key: str = None) -> Dict:
-    prompt = _build_prompt(requirement, context)
-
     try:
-        result_text = _call_ai(prompt, provider, api_key)
+        result_text = _call_ai(requirement, context, provider, api_key)
         if result_text.startswith("```"):
             lines = result_text.split("\n")
             inner = lines[1:]
@@ -210,7 +254,7 @@ def analyze_requirement(requirement: Dict, context: str, provider: str = None, a
                     "satisfied": True,
                     "explanation": "Not evaluated.",
                     "affected_text": None,
-                    "recommendations": None,
+                    "suggested_replacement": None,
                 })
 
         cleaned.sort(key=lambda e: CRITERIA_ORDER.index(e["criterion_id"]))
@@ -250,10 +294,6 @@ def _error_result(requirement: Dict, error_msg: str) -> Dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Parallel batch analysis
-# ---------------------------------------------------------------------------
-
 def analyze_all_requirements(
     requirements: List[Dict],
     context: str,
@@ -261,26 +301,58 @@ def analyze_all_requirements(
     provider: str = None,
     api_key: str = None,
 ) -> Dict:
+    """Calls LLM in parallel for online API services (Claude, OpenAI), and calls sequentially for Ollama. Ollama does
+    not use parallelization for performance reasons, as well as to improve local prompt caching."""
     if not session_id:
         session_id = str(uuid.uuid4())[:8]
 
     analyzed: List[Optional[Dict]] = [None] * len(requirements)
 
-    with ThreadPoolExecutor(max_workers=min(10, len(requirements))) as executor:
-        future_to_index = {
-            executor.submit(analyze_requirement, req, context, provider, api_key): i
-            for i, req in enumerate(requirements)
-        }
-        for future in as_completed(future_to_index):
-            i = future_to_index[future]
-            req = requirements[i]
-            try:
-                result = future.result()
-            except Exception as e:
-                result = _error_result(req, str(e))
-            analyzed[i] = result
-            n = sum(1 for ev in result.get("criteria_evaluations", []) if not ev["satisfied"])
-            print(f"  [{result['req_id']}] done — {n} criteria violated")
+    if not requirements:
+         return {
+                "session_id": session_id,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "context": context,
+                "rag_enhanced": False,
+                "requirements": analyzed,
+            }
+
+    actual_provider = (provider or get_provider()).lower()
+    # no parallelization for ollama 
+    if actual_provider == "ollama":
+        max_workers = 1
+    else: 
+        max_workers = min(10, len(requirements))
+
+    # Call for first requirement, then do the rest in parallel. This primes the cache. Without this, prompt 
+    # caching performance will be very poor. 
+    first_req = requirements[0]
+    try:
+        res0 = analyze_requirement(first_req, context, provider, api_key)
+    except Exception as e:
+        res0 = _error_result(first_req, str(e))
+    analyzed[0] = res0
+    n = sum(
+        1 for ev in res0.get("criteria_evaluations", []) if not ev["satisfied"]
+    )
+    print(f"  [{res0.get('req_id', 0)}] done — {n} criteria violated")
+
+    if len(requirements) > 1:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_index = {
+                executor.submit(analyze_requirement, req, context, provider, api_key): i
+                for i, req in enumerate(requirements) if i > 0
+            }
+            for future in as_completed(future_to_index):
+                i = future_to_index[future]
+                req = requirements[i]
+                try:
+                    result = future.result()
+                except Exception as e:
+                    result = _error_result(req, str(e))
+                analyzed[i] = result
+                n = sum(1 for ev in result.get("criteria_evaluations", []) if not ev["satisfied"])
+                print(f"  [{result['req_id']}] done — {n} criteria violated")
 
     return {
         "session_id": session_id,
