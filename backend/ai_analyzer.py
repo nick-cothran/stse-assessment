@@ -115,9 +115,6 @@ def _call_ai(requirement: Dict, context: str, provider: str = None, api_key: str
     context_prompt = _build_context_prompt(context)
     requirement_prompt = _build_requirement_prompt(requirement)
 
-    prompt = system_prompt + "\n\n" + context_prompt + "\n\n" + requirement_prompt
-    #print(f"Prompt:\n\n{prompt}")
-
     provider = (provider or get_provider()).lower()
 
     if provider == "anthropic":
@@ -148,7 +145,6 @@ def _call_ai(requirement: Dict, context: str, provider: str = None, api_key: str
                 }
             ]}],
         )
-        print(response.usage)
         return response.content[0].text.strip()
 
     elif provider == "openai":
@@ -160,7 +156,17 @@ def _call_ai(requirement: Dict, context: str, provider: str = None, api_key: str
             model="gpt-4o",
             max_tokens=1200,
             temperature=0.1,
-            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"{system_prompt}\n\n{context_prompt}"
+                },
+                {
+                    "role": "user", 
+                    "content": requirement_prompt
+                }
+            ],
         )
         return response.choices[0].message.content.strip()
 
@@ -169,11 +175,22 @@ def _call_ai(requirement: Dict, context: str, provider: str = None, api_key: str
         ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
         payload = json.dumps({
             "model": ollama_model,
-            "messages": [{"role": "user", "content": prompt}],
+            "format": "json",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": f"{system_prompt}\n\n{context_prompt}"
+                },
+                {
+                    "role": "user", 
+                    "content": requirement_prompt
+                }
+            ],
             "stream": False,
             "options": {
                 "temperature": 0.1,
-                "num_predict": 1200
+                "num_predict": 1200,
+                "num_ctx": 4096
             }
         }).encode("utf-8")
         req = urllib.request.Request(
@@ -190,10 +207,8 @@ def _call_ai(requirement: Dict, context: str, provider: str = None, api_key: str
 
 
 def analyze_requirement(requirement: Dict, context: str, provider: str = None, api_key: str = None) -> Dict:
-
     try:
         result_text = _call_ai(requirement, context, provider, api_key)
-        fprint(f"result {requirement}: {result_text}")
         if result_text.startswith("```"):
             lines = result_text.split("\n")
             inner = lines[1:]
@@ -277,10 +292,6 @@ def _error_result(requirement: Dict, error_msg: str) -> Dict:
     }
 
 
-# ---------------------------------------------------------------------------
-# Parallel batch analysis
-# ---------------------------------------------------------------------------
-
 def analyze_all_requirements(
     requirements: List[Dict],
     context: str,
@@ -288,6 +299,8 @@ def analyze_all_requirements(
     provider: str = None,
     api_key: str = None,
 ) -> Dict:
+    """Calls LLM in parallel for online API services (Claude, OpenAI), and calls sequentially for Ollama. Ollama does
+    not use parallelization for performance reasons, as well as to improve local prompt caching."""
     if not session_id:
         session_id = str(uuid.uuid4())[:8]
 
@@ -302,6 +315,15 @@ def analyze_all_requirements(
                 "requirements": analyzed,
             }
 
+    actual_provider = (provider or get_provider()).lower()
+    # no parallelization for ollama 
+    if actual_provider == "ollama":
+        max_workers = 1
+    else: 
+        max_workers = min(10, len(requirements))
+
+    # Call for first requirement, then do the rest in parallel. This primes the cache. Without this, prompt 
+    # caching performance will be very poor. 
     first_req = requirements[0]
     try:
         res0 = analyze_requirement(first_req, context, provider, api_key)
@@ -314,7 +336,7 @@ def analyze_all_requirements(
     print(f"  [{res0.get('req_id', 0)}] done — {n} criteria violated")
 
     if len(requirements) > 1:
-        with ThreadPoolExecutor(max_workers=min(10, len(requirements))) as executor:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_index = {
                 executor.submit(analyze_requirement, req, context, provider, api_key): i
                 for i, req in enumerate(requirements) if i > 0
