@@ -149,7 +149,7 @@ export default function UploadPage() {
 
         <form onSubmit={handleSubmit}>
           {/* Provider selector — only shown when there is a real choice to make */}
-          {providers.length > 1 && (
+          {providers.length > 1 ? (
             <div className="form-group">
               <label>Analysis Model</label>
               <div
@@ -171,7 +171,7 @@ export default function UploadPage() {
                 ))}
               </div>
             </div>
-          )}
+          ) : (providers.length == 1) && (<p>Currently using {providers[0].label}</p>)}
 
           {!serviceReady && (
             <div className="error-msg">

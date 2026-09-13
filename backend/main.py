@@ -10,7 +10,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 from dotenv import load_dotenv
-import socket
+import asyncio
 from urllib.parse import urlparse
 import json
 
@@ -85,7 +85,7 @@ BASE_DIR = Path(__file__).parent.parent
 FRONTEND_DIST = BASE_DIR / 'frontend' / 'dist'
 
 
-SUPPORTED_PROVIDERS = {"anthropic", "openai", "ollama"}
+SUPPORTED_PROVIDERS = ["anthropic", "openai", "ollama"]
 
 # Key based providers the app can serve, and the env var holding each one's key. Keys are
 # supplied by the operator (backend/.env locally, Render dashboard in
@@ -129,31 +129,33 @@ def _server_api_key(provider: str) -> str:
     saved_keys = _load_json_keys()
     return saved_keys.get(provider, '').strip()
 
-def _is_ollama_running() -> bool: 
+async def _is_ollama_running() -> bool: 
     """Returns whether or not ollama is running. If it is not, then it will not be listed as an available provider. It does
     this by using checking if the ollama port will accept a TCP connection. If it cannot connect, then it will timeout, showing that ollama 
     is not running. This has been much faster than calling ollama's '/' endpoint."""
-    ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
-    if not ollama_url:
+    try:
+        url = urlparse(os.getenv("OLLAMA_URL", "http://localhost:11434"))
+        if not url.hostname:
+            return False
+        _, writer = await asyncio.wait_for(
+            asyncio.open_connection(url.hostname, url.port or 11434),
+            timeout=0.1,
+        )
+        writer.close()
+        await writer.wait_closed()
+        return True
+    except (OSError, asyncio.TimeoutError, ValueError):
         return False
     
-    parsed_url = urlparse(ollama_url)
-    host = parsed_url.hostname
-    port = parsed_url.port
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(0.01) 
-        is_up = s.connect_ex((host, port)) == 0
-    return is_up
-
-def _available_providers() -> list:
+async def _available_providers() -> list:
     """Providers that currently have a key configured on the server."""
     available = []
 
     # for the providers that use keys, we check from the saved file. Ollama has to be checked
     # separately since it doesn't use a key. 
     saved_keys = list(_load_json_keys())
-    ollama_on = _is_ollama_running()
+    ollama_on = await _is_ollama_running()
 
     available.extend(saved_keys)
     if ollama_on:
@@ -272,7 +274,7 @@ async def _warn_if_unprotected():
             "WARNING: ACCESS_CODE is not set — the API is open to anyone who "
             "reaches this URL, and analysis runs on your API keys."
         )
-    if not _available_providers():
+    if not await _available_providers():
         print(
             "WARNING: no AI provider key configured — set ANTHROPIC_API_KEY "
             "and/or OPENAI_API_KEY. Analysis requests will fail until you do."
@@ -296,14 +298,14 @@ def read_root():
 
 
 @app.get("/api/config")
-def get_config():
+async def get_config():
     """Tell the frontend which providers this deployment can use.
 
     Never exposes keys — only whether each one is configured, so the UI can
     offer the working providers and hide the rest.
     """
     from ai_analyzer import get_provider
-    available = _available_providers()
+    available = await _available_providers()
     # Default to the configured AI_PROVIDER when it is usable, else whichever
     # provider actually has a key, so the UI never opens on a dead option.
     provider = get_provider()

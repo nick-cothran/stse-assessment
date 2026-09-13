@@ -11,6 +11,8 @@ services:
     environment:
       OLLAMA_MODEL: *ollama_model
       AI_PROVIDER: anthropic
+      ANTHROPIC_MODEL: "claude-sonnet-4-5"
+      OPENAI_MODEL: "gpt-4o"
       OLLAMA_URL: http://ollama:11434
     depends_on:
       ollama-model-install:
@@ -27,14 +29,15 @@ services:
       - backend
     restart: unless-stopped
 
+  # this version runs on cpu and is compatible with all hardware
   ollama:
     image: ollama/ollama:latest
-    container_name: ollama_local_models
+    container_name: ollama_cpu
     ports:
       - "11434:11434"
     volumes:
       - "ollama_models:/root/.ollama"
-    profiles: ["local-model"]
+    profiles: ["ollama"]
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 60s
@@ -43,6 +46,36 @@ services:
       retries: 10
       start_period: 2s
     restart: unless-stopped
+
+  # this version runs much faster, but only on nvidia gpus
+  ollama-gpu:
+    image: ollama/ollama:latest
+    container_name: ollama_gpu
+    ports:
+      - "11434:11434"
+    volumes:
+      - "ollama_models:/root/.ollama"
+    networks:
+      default:
+        aliases:
+          - ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    profiles: ["ollama-nvidia"]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 60s
+      start_interval: 2s
+      timeout: 5s
+      retries: 10
+      start_period: 2s
+    restart: unless-stopped
+
 
     # installs model once ollama is ready. if model has already been installed in the volume,
     # it will not be reinstalled.
@@ -54,10 +87,14 @@ services:
     environment:
       OLLAMA_HOST: http://ollama:11434
     command: ["pull", *ollama_model]
-    profiles: ["local-model"]
+    profiles: ["ollama", "ollama-nvidia"]
     depends_on:
       ollama:
         condition: service_healthy
+        required: false
+      ollama-gpu:
+        condition: service_healthy
+        required: false
 
 volumes:
   backend_data:
