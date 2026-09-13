@@ -11,6 +11,7 @@ from collections import defaultdict
 from pathlib import Path
 from dotenv import load_dotenv
 import socket
+import json
 
 from requirements_parser import parse_requirements, validate_requirements
 from ai_analyzer import analyze_all_requirements
@@ -82,30 +83,50 @@ app.add_middleware(
 BASE_DIR = Path(__file__).parent.parent
 FRONTEND_DIST = BASE_DIR / 'frontend' / 'dist'
 
-# Providers the app can serve, and the env var holding each one's key. Keys are
+
+SUPPORTED_PROVIDERS = {"anthropic", "openai", "ollama"}
+
+# Key based providers the app can serve, and the env var holding each one's key. Keys are
 # supplied by the operator (backend/.env locally, Render dashboard in
 # production) — never by the end user, who never sees or enters a key.
 PROVIDER_ENV_KEYS = {
     'anthropic': 'ANTHROPIC_API_KEY',
     'openai': 'OPENAI_API_KEY',
-    'ollama': "OLLAMA_URL",
 }
 
 
 def _get_provider_labels() -> dict:
-    """Returns the model labels for the frontend. Loads the model label from the env var for ollama, since
-    it is chosen from there. This should likely be done for the other models later on. """
+    """Returns the model labels for the frontend. Loads the model labels from the env vars for 
+    each provider."""
+    current_anthropic_model = os.getenv("ANTHROPIC_MODEL", "Anthropic model")
+    current_openai_model = os.getenv("OPENAI_MODEL", "OpenAI model")
     current_ollama_model = os.getenv("OLLAMA_MODEL", "Local model")
+    
     return {
-        'anthropic': 'Claude (Anthropic)',
-        'openai': 'GPT-4o (OpenAI)',
+        'anthropic': f"{current_anthropic_model} (Anthropic)",
+        'openai': f"{current_openai_model} (OpenAI)",
         'ollama': f"{current_ollama_model} (Ollama)"
     }
 
+DATA_DIR = Path(__file__).parent / "data"
+API_KEYS_FILE = DATA_DIR / "api_keys.json"
+
+def _load_json_keys() -> dict:
+    """Loads the api keys that have been saved in the /data/api_keys.json file. This is used
+    so that the user can set their keys in the browser, then later retrieve them for AI calls."""
+    if API_KEYS_FILE.exists():
+        try:
+            return json.loads(API_KEYS_FILE.read_text(encoding="utf-8"))
+        except:
+            return {}
+    return {}
+
 def _server_api_key(provider: str) -> str:
     """Return the operator-configured key for a provider, or '' if unset."""
-    env_var = PROVIDER_ENV_KEYS.get(provider)
-    return os.getenv(env_var, '').strip() if env_var else ''
+    if provider not in PROVIDER_ENV_KEYS: # don't read file if provider doesn't use key
+        return ""
+    saved_keys = _load_json_keys()
+    return saved_keys.get(provider, '').strip()
 
 def _is_ollama_running() -> bool: 
     """Returns whether or not ollama is running. If it is not, then it will not be listed as an available provider. It does
@@ -122,14 +143,16 @@ def _is_ollama_running() -> bool:
 def _available_providers() -> list:
     """Providers that currently have a key configured on the server."""
     available = []
-    for p in PROVIDER_ENV_KEYS:
-        if p == "ollama":
-            if _is_ollama_running():
-                available.append(p)
-        elif _server_api_key(p):
-            available.append(p)
-    return available
 
+    # for the providers that use keys, we check from the saved file. Ollama has to be checked
+    # separately since it doesn't use a key. 
+    saved_keys = list(_load_json_keys())
+    ollama_on = _is_ollama_running()
+
+    available.extend(saved_keys)
+    if ollama_on:
+        available.append("ollama")
+    return available
 
 # ===========================================================
 # Shared access code
@@ -282,16 +305,55 @@ def get_config():
         provider = available[0] if available else provider
 
     provider_labels = _get_provider_labels()
+
+    providers = [{"value": p, 
+                  "label": provider_labels.get(p, p), 
+                  "isAvailable": p in available, 
+                  "requiresKey": p in PROVIDER_ENV_KEYS} for p in SUPPORTED_PROVIDERS]
+    
     return {
         "provider": provider,
         "model_label": provider_labels.get(provider, provider),
-        "providers": [
-            {"value": p, "label": provider_labels.get(p, p)} for p in available
-        ],
-        "ready": bool(available),
+        "providers": providers,
         "auth_required": bool(_get_access_code()),
     }
 
+@app.post("/api/keys")
+async def save_key(payload: dict):
+    """
+    Saves an API key for one of the supported LLM providers. Saves to 
+    /data/api_keys.json. 
+
+    Payload fields:
+    - provider (str, required) - The provider the key is for
+    - key (str, required) - The API key
+    """
+    provider = payload.get("provider", "").strip().lower()
+    key = payload.get("key", "").strip()
+
+    if provider not in PROVIDER_ENV_KEYS:
+        raise HTTPException(status_code=400, detail=f"Unsupported AI provider '{provider}'.")
+    if not key:
+        raise HTTPException(status_code=400, detail=f"Key cannot be blank.")
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    keys = _load_json_keys()
+    keys[provider] = key
+    API_KEYS_FILE.write_text(json.dumps(keys, indent=2), encoding="utf-8")
+
+    return {"status": "success"}
+
+@app.delete("/api/keys/{provider}")
+async def delete_key(provider: str):
+    if provider not in PROVIDER_ENV_KEYS:
+        raise HTTPException(status_code=400, detail=f"Unsupported AI provider '{provider}'.")
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    keys = _load_json_keys()
+    del keys[provider]
+    API_KEYS_FILE.write_text(json.dumps(keys, indent=2), encoding="utf-8")
+
+    return {"status": "success"}
 
 @app.post("/api/upload")
 async def upload_files(
@@ -305,11 +367,12 @@ async def upload_files(
     # ignored so a caller can't bill an arbitrary key through this deployment.
     provider = request.headers.get('X-AI-Provider', '').strip().lower() or os.getenv('AI_PROVIDER', 'anthropic')
 
-    if provider not in PROVIDER_ENV_KEYS:
+
+    if provider not in SUPPORTED_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unsupported AI provider '{provider}'.")
 
     api_key = _server_api_key(provider)
-    if not api_key:
+    if not api_key and api_key != "ollama":
         raise HTTPException(
             status_code=503,
             detail=(
@@ -317,7 +380,6 @@ async def upload_files(
                 f"Set {PROVIDER_ENV_KEYS[provider]} in the deployment environment."
             ),
         )
-
     # Key and provider stay request-scoped (passed straight to the analyzer) so
     # concurrent requests never clobber each other's configuration.
 
@@ -366,7 +428,6 @@ async def upload_files(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
-
 
 @app.get("/api/analysis/{session_id}")
 def get_analysis(session_id: str):

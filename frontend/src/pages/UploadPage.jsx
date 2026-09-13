@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import ApiKeyModal from "../components/ApiKeyModal/ApiKeyModal";
 
 function ProgressBar({ active, pct }) {
   if (!active) return null;
@@ -24,6 +25,7 @@ export default function UploadPage() {
   // Providers this deployment can actually use — the server reports only the
   // ones it holds a key for. Users never enter a key.
   const [providers, setProviders] = useState([]);
+  const [keyedProviders, setKeyedProviders] = useState([]);
   const [configLoaded, setConfigLoaded] = useState(false);
   const [reqFile, setReqFile] = useState(null);
   const [ctxFile, setCtxFile] = useState(null);
@@ -33,16 +35,17 @@ export default function UploadPage() {
   const [sessionResult, setSessionResult] = useState(null);
   const [barPct, setBarPct] = useState(0);
   const timerRef = useRef(null);
+  const [isKeyModalOpen, setIsKeyModalOpen] = useState(false);
 
-  // Single config fetch on mount — retries until backend is ready.
-  // Never re-runs; never races with anything else.
-  useEffect(() => {
+  async function fetchConfig() {
     let cancelled = false;
     const poll = async (attemptsLeft = 20) => {
       try {
         const res = await axios.get("/api/config", { timeout: 2000 });
         if (cancelled) return;
-        setProviders(res.data.providers || []);
+        const allProviders = res.data.providers;
+        setKeyedProviders(allProviders.filter((p) => p.requiresKey));
+        setProviders(allProviders.filter((p) => p.isAvailable));
         setProvider(res.data.provider || "");
         setConfigLoaded(true);
       } catch {
@@ -54,6 +57,11 @@ export default function UploadPage() {
     return () => {
       cancelled = true;
     };
+  }
+
+  // Single config fetch on mount — retries until backend is ready.
+  useEffect(() => {
+    fetchConfig();
   }, []); // ← empty deps: runs once, never again
 
   // No configured provider means the deployment is missing its API keys —
@@ -84,7 +92,7 @@ export default function UploadPage() {
     }
     if (!serviceReady) {
       setError(
-        "The analysis service is not configured. Please contact the site administrator.",
+        "There are no available AI providers. Add your API keys in order to use providers.",
       );
       return;
     }
@@ -124,7 +132,16 @@ export default function UploadPage() {
   return (
     <div className="upload-page">
       <div className="upload-card">
-        <h2>Upload Requirements</h2>
+        <div className="upload-card-header">
+          <h2>Upload Requirements</h2>
+          <button
+            className="key-modal-btn"
+            onClick={() => setIsKeyModalOpen(!isKeyModalOpen)}
+          >
+            Change API Keys
+          </button>
+        </div>
+
         <p className="subtitle">
           Analyze requirements against INCOSE quality criteria using AI. Upload
           your requirements document and optional context file.
@@ -158,8 +175,7 @@ export default function UploadPage() {
 
           {!serviceReady && (
             <div className="error-msg">
-              The analysis service is not configured on this server. Please
-              contact the site administrator.
+              No providers available. Set your API keys to use providers.
             </div>
           )}
 
@@ -227,6 +243,13 @@ export default function UploadPage() {
           )}
         </form>
       </div>
+      {isKeyModalOpen && (
+        <ApiKeyModal
+          onClose={() => setIsKeyModalOpen(false)}
+          onKeySaved={fetchConfig}
+          providers={keyedProviders}
+        />
+      )}
     </div>
   );
 }

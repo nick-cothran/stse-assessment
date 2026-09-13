@@ -112,12 +112,12 @@ def _call_ai(prompt: str, provider: str = None, api_key: str = None) -> str:
     provider = (provider or get_provider()).lower()
 
     if provider == "anthropic":
-        key = api_key or os.getenv("ANTHROPIC_API_KEY", "").strip()
-        if not key:
-            raise ValueError("ANTHROPIC_API_KEY is not set in .env")
-        client = anthropic.Anthropic(api_key=key)
+        anthropic_model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY is not set")
+        client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
-            model="claude-sonnet-4-5",
+            model=anthropic_model,
             max_tokens=1200,
             temperature=0.1,
             messages=[{"role": "user", "content": prompt}],
@@ -125,12 +125,12 @@ def _call_ai(prompt: str, provider: str = None, api_key: str = None) -> str:
         return response.content[0].text.strip()
 
     elif provider == "openai":
-        key = api_key or os.getenv("OPENAI_API_KEY", "").strip()
-        if not key:
+        openai_model = os.getenv("OPENAI_MODEL", "gpt-4o")
+        if not api_key:
             raise ValueError("OPENAI_API_KEY is not set in .env")
-        client = openai_lib.OpenAI(api_key=key)
+        client = openai_lib.OpenAI(api_key=api_key)
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=openai_model,
             max_tokens=1200,
             temperature=0.1,
             messages=[{"role": "user", "content": prompt}],
