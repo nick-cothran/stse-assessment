@@ -87,9 +87,6 @@ FRONTEND_DIST = BASE_DIR / 'frontend' / 'dist'
 
 SUPPORTED_PROVIDERS = ["anthropic", "openai", "ollama"]
 
-# Key based providers the app can serve, and the env var holding each one's key. Keys are
-# supplied by the operator (backend/.env locally, Render dashboard in
-# production) — never by the end user, who never sees or enters a key.
 PROVIDER_ENV_KEYS = {
     'anthropic': 'ANTHROPIC_API_KEY',
     'openai': 'OPENAI_API_KEY',
