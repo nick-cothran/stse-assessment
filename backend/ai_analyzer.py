@@ -84,9 +84,11 @@ Evaluate each requirement individually against ALL of these quality criteria (A6
 For each requirement, include all the criteria that are violated.
 
 Be thorough and critical during the evaluation. For each criterion, if violation exist, return one object per criterion, including:
-• criterion ID
-• criterion name
-• short explanation on why the violation exists (1–2 sentences)
+• criterion_id: criterion ID
+• name: criterion name
+• explanation: short explanation on why the violation exists (1–2 sentences)
+• affected_text: the EXACT verbatim substring from the requirement that causes the violation
+• suggested_replacement: a concise improved replacement for ONLY that substring. Do not rewrite the whole requirement. 
 
 The criteria and their sub-rules are as follows. For each criterion, use both the criterion DESCRIPTION and the SUB-RULES as a checklist to guide your judgment. If the description or any sub-rule is violated, the criterion is violated. Evaluate each criterion independently for each of the requirements.
 
@@ -109,9 +111,11 @@ Evaluate each requirement individually against ALL of these quality criteria (A2
 For each requirement, include all the criteria that are violated.
 
 Be thorough and critical during the evaluation. For each criterion, if violations exist, return one object per criterion, including:
-• criterion ID
-• criterion name
-• short explanation on why the violation exists (1–2 sentences)
+• criterion_id: criterion ID
+• name: criterion name
+• explanation: short explanation on why the violation exists (1–2 sentences)
+• affected_text: the EXACT verbatim substring from the requirement that causes the violation
+• suggested_replacement: a concise improved replacement for ONLY that substring. Do not rewrite the whole requirement. 
 
 The criteria and their sub-rules are as follows. For each criterion, use both the criterion DESCRIPTION and the SUB-RULES as a checklist to guide your judgment. If the description or any sub-rule is violated, the criterion is violated. Evaluate each criterion independently for each of the requirements.
 
@@ -138,12 +142,12 @@ def get_provider() -> str:
     return os.getenv("AI_PROVIDER", "anthropic").strip().lower()
 
 
-def _call_ai(user_prompt: str, system_prompt: str, provider: str = None, api_key: str = None) -> str:
+def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provider: str = None, api_key: str = None) -> str:
     """Route to Anthropic, OpenAI, or Ollama. Uses env vars by default."""
 
-    print("Prompt:", system_prompt)
-
     provider = (provider or get_provider()).lower()
+
+    max_tokens = min(500 + num_requirements * 1000, 120000)
 
     if provider == "anthropic":
         anthropic_model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
@@ -153,7 +157,7 @@ def _call_ai(user_prompt: str, system_prompt: str, provider: str = None, api_key
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
             model=anthropic_model,
-            max_tokens=2000,
+            max_tokens=max_tokens,
             thinking={"type": "disabled"},
             system=[
                 {
@@ -179,10 +183,15 @@ def _call_ai(user_prompt: str, system_prompt: str, provider: str = None, api_key
         client = openai_lib.OpenAI(api_key=api_key)
         response = client.chat.completions.create(
             model=openai_model,
-            max_tokens=1200,
+            max_completion_tokens=max_tokens,
             temperature=0.1,
+            reasoning_effort="none",
             response_format={"type": "json_object"},
             messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
                 {
                     "role": "user", 
                     "content": user_prompt
@@ -210,7 +219,7 @@ def _call_ai(user_prompt: str, system_prompt: str, provider: str = None, api_key
             "stream": False,
             "options": {
                 "temperature": 0.1,
-                "num_predict": 1200,
+                "num_predict": max_tokens,
                 "num_ctx": 4096
             }
         }).encode("utf-8")
@@ -243,9 +252,8 @@ def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, con
         else: 
             return _error_result(requirements, f"Invalid criteria type", criteria_order)
         
-        result_text = _call_ai(user_prompt, system_prompt, provider, api_key)
+        result_text = _call_ai(user_prompt, system_prompt, len(requirements), provider, api_key)
 
-        print(requirements)
         print(result_text)
 
         if result_text.startswith("```"):
@@ -291,16 +299,16 @@ def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, con
                     "affected_text": affected_text,
                     "suggested_replacement": suggested,
                 })
-                for cid in criteria_order:
-                    if cid not in present:
-                        cleaned.append({
-                            "criterion_id": cid,
-                            "criterion_name": CRITERIA_NAMES.get(cid, ""),
-                            "satisfied": True,
-                            "explanation": "No violation found.",
-                            "affected_text": None,
-                            "suggested_replacement": None,
-                        })
+            for cid in criteria_order:
+                if cid not in present:
+                    cleaned.append({
+                        "criterion_id": cid,
+                        "criterion_name": CRITERIA_NAMES.get(cid, ""),
+                        "satisfied": True,
+                        "explanation": "No violation found.",
+                        "affected_text": None,
+                        "suggested_replacement": None,
+                    })
             cleaned.sort(key=lambda e: criteria_order.index(e["criterion_id"]))
 
             overall_evaluation[req_id] = {"req_id": req_id,
