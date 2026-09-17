@@ -26,75 +26,105 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 _CRITERIA_PATH = Path(__file__).parent / 'incose_rules.json'
 
 
-def _load_criteria() -> List[Dict]:
+def _load_criteria() -> Dict:
     with open(_CRITERIA_PATH, 'r') as f:
         data = json.load(f)
-    return [
-        c for c in data['individual_criteria']
-        if c['criterion_id'] not in ('A1', 'A11')
-    ]
-
+    return { c["criterion_id"]: c for c in data['individual_criteria'] } 
 
 CRITERIA = _load_criteria()
-CRITERIA_ORDER = [c['criterion_id'] for c in CRITERIA]
-CRITERIA_NAMES = {c['criterion_id']: c['name'] for c in CRITERIA}
+CONTEXTUAL_CRITERIA = [c for _, c in CRITERIA.items() if c.get("type") == "contextual"]
+STRUCTURAL_CRITERIA = [c for _, c in CRITERIA.items() if c.get("type") == "structural"]
+CRITERIA_ORDER = list(CRITERIA.keys())
+CRITERIA_NAMES = {cid: c['name'] for cid, c in CRITERIA.items()}
 
 
 # ---------------------------------------------------------------------------
 # Prompt — AI only classifies violations and identifies affected_text
 # ---------------------------------------------------------------------------
 
-def _build_criteria_text() -> str:
+def _build_criteria_text(criteria_type: str) -> str:
     lines = []
-    for c in CRITERIA:
-        lines.append(f"**{c['criterion_id']} – {c['name']}**: {c['description']}")
-        for sr in c.get('sub_rules', []):
-            lines.append(f"  - {sr}")
-    return "\n".join(lines)
+    criteria = (CONTEXTUAL_CRITERIA if criteria_type == "contextual"
+                 else STRUCTURAL_CRITERIA if criteria_type == "structural" 
+                 else [])
 
+    for c in criteria:
+        subrules = "\n".join(
+            f"  {sr}" for sr in c.get("sub_rules", [])
+        )
 
-CRITERIA_TEXT = _build_criteria_text()
+        lines.append(f"{c['criterion_id']} — {c['name']}\nDescription: {c['description']}\n\nSub-rules:\n{subrules}")
 
+    return "\n\n---\n\n".join(lines)
 
-def _build_system_prompt() -> str:
-    return f"""You are an expert requirements engineer. Evaluate the requirement below against each INCOSE criterion.
-
-Criteria to evaluate:
-{CRITERIA_TEXT}
-
-Your job — for each criterion:
-1. Decide: satisfied (true/false).
-2. Write a 1–2 sentence explanation of why. Be brief.
-3. If violated: identify the EXACT verbatim substring from the requirement that is the problem (affected_text), and provide a concise improved replacement for ONLY that substring (suggested_replacement). Do not rewrite the whole requirement. Both affected_text and suggested_replacement are REQUIRED when satisfied is false — never leave them null on a violation.
-4. If satisfied: affected_text and suggested_replacement are null.
-
-Output ONLY valid JSON — no markdown, no preamble:
+def _build_output_example(first_criterion: dict, requirements: List[Dict]):
+    return f"""Return ONLY valid JSON.
 {{
-  "criteria_evaluations": [
-    {{
-      "criterion_id": "A2",
-      "satisfied": false,
-      "explanation": "The requirement cannot be traced to any stakeholder need or ConOps in the provided context.",
-      "affected_text": "should be user-friendly and easy to use by all operators",
-      "suggested_replacement": "shall provide an interface conforming to [stakeholder need reference]"
-    }},
-    {{
-      "criterion_id": "A3",
-      "satisfied": true,
-      "explanation": "The requirement refers to the system of interest and expresses a system-level capability.",
-      "affected_text": null,
-      "suggested_replacement": null
-    }}
-  ],
-  "suggested_full_text": "Improved version of the full requirement with all problems resolved"
-}}
+  "individualEvaluations": {{
+    "{requirements[0]["id"]}": [
+      {{
+        "criterion_id": "{first_criterion['criterion_id']}",
+        "name": "{first_criterion['name']}",
+        "explanation": "Short explanation on why the violation exists.",
+        "affected_text": "should be user-friendly and easy to use by all operators",
+        "suggested_replacement": "shall provide an interface conforming to [stakeholder need reference]"
+      }}
+    ],
+    "{requirements[1]["id"]}": []
+  }}
+}}"""
 
-Return one entry per criterion in order: {', '.join(CRITERIA_ORDER)}."""
+def _build_structural_prompt(requirements: List[Dict]): 
+    return f"""You are a requirements quality evaluator. You will receive a list of requirements with their IDs.
 
-def _build_requirement_prompt(requirement: Dict):
-    return f"""Requirement:
-ID: {requirement['id']}
-Text: "{requirement['text']}"""
+Your task is to perform individual requirement evaluation.
+
+Evaluate each requirement individually against ALL of these quality criteria (A6 and A10). Be CRITICAL and THOROUGH when identifying violations for each criterion.
+
+For each requirement, include all the criteria that are violated.
+
+Be thorough and critical during the evaluation. For each criterion, if violation exist, return one object per criterion, including:
+• criterion ID
+• criterion name
+• short explanation on why the violation exists (1–2 sentences)
+
+The criteria and their sub-rules are as follows. For each criterion, use both the criterion DESCRIPTION and the SUB-RULES as a checklist to guide your judgment. If the description or any sub-rule is violated, the criterion is violated. Evaluate each criterion independently for each of the requirements.
+
+{_build_criteria_text("structural")}
+
+Do not return sub-rule IDs or sub-rule-level reasoning. Sub-rules are used only as a checklist to guide the criterion-level judgment.
+Include every requirement ID in individualEvaluations. If no A6 or A10 violation exists for a requirement, return an empty array for that requirement. So, an empty array for a requirement is how you indicate that the requirement has no violations of A6 or A10.
+
+{_build_output_example(STRUCTURAL_CRITERIA[0], requirements)}"""
+
+def _build_contextual_prompt(requirements: List[Dict]):
+     return f"""You are a requirements quality evaluator. You will receive a list of requirements with their IDs, along with Project Context, Concept of Operations (ConOps) information, and a reference image of the ConOps.
+
+When completing the following tasks, carefully consider the provided Project Context, Concept of Operations, and reference image to determine if requirements align with the project goals, needs, and operational constraints.
+
+Your task is to perform individual requirement evaluation.
+
+Evaluate each requirement individually against ALL of these quality criteria (A2, A3, A4, A5, and A9). Be CRITICAL and THOROUGH when identifying violations for each criterion.
+
+For each requirement, include all the criteria that are violated.
+
+Be thorough and critical during the evaluation. For each criterion, if violations exist, return one object per criterion, including:
+• criterion ID
+• criterion name
+• short explanation on why the violation exists (1–2 sentences)
+
+The criteria and their sub-rules are as follows. For each criterion, use both the criterion DESCRIPTION and the SUB-RULES as a checklist to guide your judgment. If the description or any sub-rule is violated, the criterion is violated. Evaluate each criterion independently for each of the requirements.
+
+{_build_criteria_text("contextual")}
+
+Do not return sub-rule IDs or sub-rule-level reasoning. Sub-rules are used only as a checklist to guide the criterion-level judgment.
+Include every requirement ID in individualEvaluations. If no A2, A3, A4, A5, or A9 violation exists for a requirement, return an empty array for that requirement.So, an empty array for a requirement is how you indicate that the requirement has no violations of A2, A3, A4, A5, or A9.
+
+{_build_output_example(CONTEXTUAL_CRITERIA[0], requirements)}"""
+
+def _build_requirement_prompt(requirements: list[Dict]):
+    requirements_text = "\n".join(f"{r['id']}: {r['text']}" for r in requirements)
+    return f"Requirements to evaluate:\n{requirements_text}"
 
 def _build_context_prompt(context: str):
     return f"""System Context: {context.strip() if context else "No additional context provided."}"""
@@ -108,12 +138,10 @@ def get_provider() -> str:
     return os.getenv("AI_PROVIDER", "anthropic").strip().lower()
 
 
-def _call_ai(requirement: Dict, context: str, provider: str = None, api_key: str = None) -> str:
+def _call_ai(user_prompt: str, system_prompt: str, provider: str = None, api_key: str = None) -> str:
     """Route to Anthropic, OpenAI, or Ollama. Uses env vars by default."""
 
-    system_prompt = _build_system_prompt()
-    context_prompt = _build_context_prompt(context)
-    requirement_prompt = _build_requirement_prompt(requirement)
+    print("Prompt:", system_prompt)
 
     provider = (provider or get_provider()).lower()
 
@@ -137,12 +165,7 @@ def _call_ai(requirement: Dict, context: str, provider: str = None, api_key: str
             messages=[{"role": "user", "content": [
                 {
                     "type": "text",
-                    "text": context_prompt,
-                    "cache_control": {"type": "ephemeral"}
-                },
-                {
-                    "type": "text",
-                    "text": requirement_prompt,
+                    "text": user_prompt,
                 }
             ]}],
         )
@@ -161,12 +184,8 @@ def _call_ai(requirement: Dict, context: str, provider: str = None, api_key: str
             response_format={"type": "json_object"},
             messages=[
                 {
-                    "role": "system",
-                    "content": f"{system_prompt}\n\n{context_prompt}"
-                },
-                {
                     "role": "user", 
-                    "content": requirement_prompt
+                    "content": user_prompt
                 }
             ],
         )
@@ -181,11 +200,11 @@ def _call_ai(requirement: Dict, context: str, provider: str = None, api_key: str
             "messages": [
                 {
                     "role": "system",
-                    "content": f"{system_prompt}\n\n{context_prompt}"
+                    "content": system_prompt
                 },
                 {
                     "role": "user", 
-                    "content": requirement_prompt
+                    "content": user_prompt
                 }
             ],
             "stream": False,
@@ -208,9 +227,27 @@ def _call_ai(requirement: Dict, context: str, provider: str = None, api_key: str
         raise ValueError(f"Unknown AI_PROVIDER: '{provider}'. Must be anthropic, openai, or ollama.")
 
 
-def analyze_requirement(requirement: Dict, context: str, provider: str = None, api_key: str = None) -> Dict:
+def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, context: str, provider: str = None, api_key: str = None) -> Dict:
+    criteria_order = [c["criterion_id"] for c in (
+                CONTEXTUAL_CRITERIA 
+                if criteria_type == "contextual" 
+                else STRUCTURAL_CRITERIA)]
     try:
-        result_text = _call_ai(requirement, context, provider, api_key)
+        if criteria_type == "structural":
+            system_prompt = _build_structural_prompt(requirements)
+            user_prompt = _build_requirement_prompt(requirements)
+
+        elif criteria_type == "contextual":
+            system_prompt = _build_contextual_prompt(requirements)
+            user_prompt = f"{_build_context_prompt(context)}\n{_build_requirement_prompt(requirements)}"
+        else: 
+            return _error_result(requirements, f"Invalid criteria type", criteria_order)
+        
+        result_text = _call_ai(user_prompt, system_prompt, provider, api_key)
+
+        print(requirements)
+        print(result_text)
+
         if result_text.startswith("```"):
             lines = result_text.split("\n")
             inner = lines[1:]
@@ -219,66 +256,73 @@ def analyze_requirement(requirement: Dict, context: str, provider: str = None, a
             result_text = "\n".join(inner)
 
         result = json.loads(result_text)
-        evals = result.get("criteria_evaluations", [])
+        evals = result.get("individualEvaluations", {})
 
-        cleaned = []
-        present = set()
-        for ev in evals:
-            cid = ev.get("criterion_id", "")
-            if cid not in CRITERIA_ORDER:
-                continue
-            present.add(cid)
-            satisfied = bool(ev.get("satisfied", True))
-            affected_text = ev.get("affected_text") or None
+        req_text_by_id = {r["id"]: r["text"] for r in requirements}
+        overall_evaluation = {}
+        expected_reqs = {r["id"] for r in requirements}
+        present_reqs = set()
 
-            suggested = ev.get("suggested_replacement") or None
-            # Fallback: if violated but no suggestion, flag it clearly
-            if not satisfied and not suggested:
-                suggested = "[No suggestion provided — review manually]"
+        for req_id in evals:
+            cleaned = []
+            present = set()
+            if req_id not in expected_reqs: 
+                continue # discard invalid requirements 
+            present_reqs.add(req_id)
+            curr_evals = evals[req_id]
+            for ev in curr_evals:
+                cid = ev.get("criterion_id", "")
+                if cid not in criteria_order:
+                    continue
+                present.add(cid)
 
-            cleaned.append({
-                "criterion_id": cid,
-                "criterion_name": CRITERIA_NAMES.get(cid, ""),
-                "satisfied": satisfied,
-                "explanation": ev.get("explanation", ""),
-                "affected_text": affected_text,
-                "suggested_replacement": suggested,
-            })
+                affected_text = ev.get("affected_text") or None
 
-        # Fill in any criteria the AI skipped
-        for cid in CRITERIA_ORDER:
-            if cid not in present:
+                suggested = ev.get("suggested_replacement") or None
+                # Fallback: if violated but no suggestion, flag it clearly
+                if not suggested:
+                    suggested = "[No suggestion provided — review manually]"
+
                 cleaned.append({
                     "criterion_id": cid,
                     "criterion_name": CRITERIA_NAMES.get(cid, ""),
-                    "satisfied": True,
-                    "explanation": "Not evaluated.",
-                    "affected_text": None,
-                    "suggested_replacement": None,
+                    "explanation": ev.get("explanation", ""),
+                    "satisfied": False,
+                    "affected_text": affected_text,
+                    "suggested_replacement": suggested,
                 })
+                for cid in criteria_order:
+                    if cid not in present:
+                        cleaned.append({
+                            "criterion_id": cid,
+                            "criterion_name": CRITERIA_NAMES.get(cid, ""),
+                            "satisfied": True,
+                            "explanation": "No violation found.",
+                            "affected_text": None,
+                            "suggested_replacement": None,
+                        })
+            cleaned.sort(key=lambda e: criteria_order.index(e["criterion_id"]))
 
-        cleaned.sort(key=lambda e: CRITERIA_ORDER.index(e["criterion_id"]))
+            overall_evaluation[req_id] = {"req_id": req_id,
+                                             "original_text": req_text_by_id[req_id],
+                                             "criteria_evaluations": cleaned}
+            
+        missing_reqs = expected_reqs - present_reqs
+        for missing in missing_reqs: # return an error for each requirement that the AI missed
+            overall_evaluation[missing] = _req_missing_result(missing, req_text_by_id[missing], criteria_order)
 
-        return {
-            "req_id": requirement["id"],
-            "original_text": requirement["text"],
-            "criteria_evaluations": cleaned,
-            "suggested_full_text": result.get("suggested_full_text", requirement["text"]),
-        }
+        return overall_evaluation
 
     except json.JSONDecodeError as e:
-        print(f"json error: {e}")
-        return _error_result(requirement, f"Failed to parse AI response: {e}")
+        return _error_result(requirements, f"Failed to parse AI response: {e}", criteria_order)
     except Exception as e:
-        print(f"error 2: {e}")
-        return _error_result(requirement, f"Analysis failed: {e}")
+        print("error: ", str(e))
+        return _error_result(requirements, f"Analysis failed: {e}", criteria_order)
 
-
-def _error_result(requirement: Dict, error_msg: str) -> Dict:
+def _req_missing_result(req_id: str, text: str, criteria: list[Dict]) -> Dict:
     return {
-        "req_id": requirement["id"],
-        "original_text": requirement["text"],
-        "error": error_msg,
+        "req_id": req_id,
+        "original_text": text,
         "criteria_evaluations": [
             {
                 "criterion_id": cid,
@@ -288,9 +332,30 @@ def _error_result(requirement: Dict, error_msg: str) -> Dict:
                 "affected_text": None,
                 "suggested_replacement": None,
             }
-            for cid in CRITERIA_ORDER
+            for cid in criteria
         ],
-        "suggested_full_text": requirement["text"],
+    }
+
+def _error_result(requirements: List[Dict], error_msg: str, criteria: list[Dict]) -> Dict:
+    return {
+        requirement["id"] : {     
+            "req_id": requirement["id"],
+            "original_text": requirement["text"],
+            "error": error_msg,
+            "criteria_evaluations": [
+                {
+                    "criterion_id": cid,
+                    "criterion_name": CRITERIA_NAMES.get(cid, ""),
+                    "satisfied": True,
+                    "explanation": "Could not evaluate — analysis failed.",
+                    "affected_text": None,
+                    "suggested_replacement": None,
+                }
+                for cid in criteria
+            ],
+            "suggested_full_text": requirement["text"],
+        } for requirement in requirements
+        
     }
 
 
@@ -313,51 +378,77 @@ def analyze_all_requirements(
                 "session_id": session_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "context": context,
-                "rag_enhanced": False,
                 "requirements": analyzed,
             }
 
     actual_provider = (provider or get_provider()).lower()
     # no parallelization for ollama 
     if actual_provider == "ollama":
-        max_workers = 1
+        num_workers = 1
     else: 
-        max_workers = min(10, len(requirements))
+        num_workers = 2
 
-    # Call for first requirement, then do the rest in parallel. This primes the cache. Without this, prompt 
-    # caching performance will be very poor. 
-    first_req = requirements[0]
-    try:
-        res0 = analyze_requirement(first_req, context, provider, api_key)
-    except Exception as e:
-        res0 = _error_result(first_req, str(e))
-    analyzed[0] = res0
-    n = sum(
-        1 for ev in res0.get("criteria_evaluations", []) if not ev["satisfied"]
-    )
-    print(f"  [{res0.get('req_id', 0)}] done — {n} criteria violated")
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        structural_future = executor.submit(analyze_requirements_typed, requirements, "structural", context, provider, api_key)
+        contextual_future = executor.submit(analyze_requirements_typed, requirements, "contextual", context, provider, api_key)
 
-    if len(requirements) > 1:
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_index = {
-                executor.submit(analyze_requirement, req, context, provider, api_key): i
-                for i, req in enumerate(requirements) if i > 0
-            }
-            for future in as_completed(future_to_index):
-                i = future_to_index[future]
-                req = requirements[i]
-                try:
-                    result = future.result()
-                except Exception as e:
-                    result = _error_result(req, str(e))
-                analyzed[i] = result
-                n = sum(1 for ev in result.get("criteria_evaluations", []) if not ev["satisfied"])
-                print(f"  [{result['req_id']}] done — {n} criteria violated")
+        try: 
+            structural_result = structural_future.result()
+            contextual_result = contextual_future.result()
+            # add results together and add to analyzed 
+            analyzed = _merge_result_categories(requirements, structural_result, contextual_result)
+            for req in analyzed:
+                n = sum(1 for ev in req.get("criteria_evaluations", []))
+                print(f"  [{req['req_id']}] done — {n} criteria violated")
+        except Exception as e:
+            analyzed = list(_error_result(requirements, str(e), [cid for cid in CRITERIA_ORDER if cid not in ("A1", "A11")]).values())
 
     return {
         "session_id": session_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "context": context,
-        "rag_enhanced": False,
         "requirements": analyzed,
     }
+
+def _merge_result_categories(requirements, structural_result, contextual_result):
+    merged = []
+    for requirement in requirements:
+        req_id = requirement["id"]
+
+        structural = structural_result.get(req_id, {})
+        contextual = contextual_result.get(req_id, {})
+        structural_evals = structural.get("criteria_evaluations", [])
+        contextual_evals = contextual.get("criteria_evaluations", [])
+        evaluations = structural_evals + contextual_evals
+
+        # error system needs to be reworked, I put this here, but the error field is not being used 
+        errors = []
+        if structural.get("error"):
+            errors.append(structural["error"])
+        if contextual.get("error"):
+            errors.append(contextual["error"])
+
+        if not evaluations and not errors: # A1 if no violations
+            a1 = CRITERIA["A1"]
+            evaluations = [{
+                "criterion_id": "A1",
+                "criterion_name": a1["name"],
+                "satisfied": True,
+                "explanation": "No violations found.",
+                "affected_text": None,
+                "suggested_replacement": None
+            }]
+
+        evaluations.sort(key=lambda e: CRITERIA_ORDER.index(e["criterion_id"]) if e["criterion_id"] in CRITERIA_ORDER else len(CRITERIA_ORDER))
+
+        result = {
+            "req_id": req_id,
+            "original_text": requirement["text"],
+            "criteria_evaluations": evaluations,
+        }
+
+        if errors:
+            result["error"] = " | ".join(errors)
+
+        merged.append(result)
+    return merged

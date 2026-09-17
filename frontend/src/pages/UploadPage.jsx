@@ -171,7 +171,7 @@ export default function UploadPage() {
                 ))}
               </div>
             </div>
-          ) : (providers.length == 1) && (<p>Currently using {providers[0].label}</p>)}
+          ) : (providers.length == 1) && (<p>Using {providers[0].label}</p>)}
 
           {!serviceReady && (
             <div className="error-msg">
