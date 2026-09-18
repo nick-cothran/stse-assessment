@@ -220,7 +220,15 @@ def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provid
             ],
             messages=[{"role": "user", "content": user_content}],
         )
-        return response.content[0].text.strip()
+
+        # this avoids thinking block 
+        text_block = next(
+            (block for block in response.content if block.type == "text"),
+            None)
+        if text_block is None:
+            raise ValueError("Claude returned no text response.")
+
+        return text_block.text.strip()
 
     elif provider == "openai":
         openai_model = os.getenv("OPENAI_MODEL", "gpt-4o")
@@ -286,7 +294,7 @@ def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provid
             "options": {
                 "temperature": 0.1,
                 "num_predict": max_tokens,
-                "num_ctx": 4096
+                "num_ctx": 8192
             }
         }).encode("utf-8")
         req = urllib.request.Request(
@@ -296,6 +304,8 @@ def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provid
         )
         with urllib.request.urlopen(req, timeout=600) as resp:
             data = json.loads(resp.read().decode("utf-8"))
+        print("Ollama prompt tokens:", data.get("prompt_eval_count"))
+        print("Ollama output tokens:", data.get("eval_count"))
         return data["message"]["content"].strip()
 
     else:

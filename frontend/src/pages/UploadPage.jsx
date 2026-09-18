@@ -27,8 +27,12 @@ export default function UploadPage() {
   const [providers, setProviders] = useState([]);
   const [keyedProviders, setKeyedProviders] = useState([]);
   const [configLoaded, setConfigLoaded] = useState(false);
+
   const [reqFile, setReqFile] = useState(null);
   const [ctxFile, setCtxFile] = useState(null);
+  const [conopsFile, setConopsFile] = useState(null);
+  const [conopsImg, setConopsImg] = useState(null);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState("");
@@ -104,6 +108,8 @@ export default function UploadPage() {
     const formData = new FormData();
     formData.append("requirements_file", reqFile);
     if (ctxFile) formData.append("context_file", ctxFile);
+    if (conopsFile) formData.append("conops_file", conopsFile);
+    if (conopsImg) formData.append("conops_img", conopsImg);
 
     try {
       const res = await axios.post("/api/upload", formData, {
@@ -111,7 +117,7 @@ export default function UploadPage() {
           "Content-Type": "multipart/form-data",
           "X-AI-Provider": provider,
         },
-        timeout: 600000,
+        timeout: 1800000,
       });
 
       setBarPct(100);
@@ -190,8 +196,10 @@ export default function UploadPage() {
               disabled={loading}
             />
             <p className="hint">
-              Format: "1. The system shall...", "REQ-001: The system shall...",
+              .txt format: "1. The system shall...", "REQ-001: The system shall...",
               "MR-C1.1: The system shall..."
+              <br />
+              .oml format: req:Requirement, tlo:hasName, tlo:hasID, tlo:hasNaturalLanguageDescription
             </p>
           </div>
 
@@ -209,6 +217,30 @@ export default function UploadPage() {
               Describe the system (e.g., "This system is a UAV flight control
               system for...")
             </p>
+          </div>
+
+          {/* ConOps File*/}
+          <div className="form-group">
+            <label htmlFor="ctx-file">ConOps File (.txt, optional)</label>
+            <input
+              id="conops-file"
+              type="file"
+              accept=".txt"
+              onChange={(e) => setConopsFile(e.target.files[0])}
+              disabled={loading}
+            />
+          </div>
+
+          {/* ConOps Img */}
+          <div className="form-group">
+            <label htmlFor="ctx-file">ConOps Image (.png, .jpg, .webp, optional)</label>
+            <input
+              id="conops-image"
+              type="file"
+              accept=".png, .jpg, .jpeg, .webp"
+              onChange={(e) => setConopsImg(e.target.files[0])}
+              disabled={loading}
+            />
           </div>
 
           {error && <div className="error-msg">{error}</div>}

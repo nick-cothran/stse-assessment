@@ -17,7 +17,7 @@ export default function ApiKeyModal({ onClose, onKeySaved, providers }) {
         {errorMsg && <div className="error-msg">{errorMsg}</div>}
         {providers.map((p) => (
           <KeyInput
-            key={p}
+            key={p.value}
             provider={p}
             onKeySaved={onKeySaved}
             setError={setErrorMsg}

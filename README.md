@@ -1,6 +1,6 @@
 # INCOSE Requirements Assistant
 
-This app reads a list of engineering requirements and checks each one against seven INCOSE quality criteria (A2, A3, A4, A5, A6, A9, A10). It uses Claude to do the checking. A reviewer can then accept or fix each problem it finds and download a corrected Word document.
+This app reads a list of engineering requirements and checks each one against seven INCOSE quality criteria (A2, A3, A4, A5, A6, A9, A10). It uses Claude, ChatGPT, or Ollama to run the analysis. A reviewer can then accept or fix each problem it finds and download a corrected Word document.
 
 This README explains **how to run the application locally with docker**, as well as **how to put the app online using Render**. Render is a hosting service. It takes the code from GitHub, builds it, and gives you a web address anyone can open.
 
