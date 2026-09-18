@@ -495,7 +495,7 @@ def analyze_all_requirements(
     else: 
         num_workers = 2
 
-    BATCH_SIZE = 2
+    BATCH_SIZE = 13
 
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         structural_future = executor.submit(_batch_requirements, requirements, "structural", context, provider, api_key, BATCH_SIZE)
