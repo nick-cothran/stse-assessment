@@ -17,7 +17,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 import base64
 
@@ -67,10 +67,16 @@ def _build_criteria_text(criteria_type: str) -> str:
     return "\n\n---\n\n".join(lines)
 
 def _build_output_example(first_criterion: dict, requirements: List[Dict]):
+    first_id = requirements[0]["id"]
+    second_example = ""
+    if len(requirements) > 1: # avoid accessing invalid index if only one requirement (happens sometimes in batching)
+        second_id = requirements[1]["id"]
+        second_example = f',\n    "{second_id}": []'
+
     return f"""Return ONLY valid JSON.
 {{
   "individualEvaluations": {{
-    "{requirements[0]["id"]}": [
+    "{first_id}": [
       {{
         "criterion_id": "{first_criterion['criterion_id']}",
         "name": "{first_criterion['name']}",
@@ -78,8 +84,7 @@ def _build_output_example(first_criterion: dict, requirements: List[Dict]):
         "affected_text": "should be user-friendly and easy to use by all operators",
         "suggested_replacement": "shall provide an interface conforming to [stakeholder need reference]"
       }}
-    ],
-    "{requirements[1]["id"]}": []
+    ]{second_example}
   }}
 }}"""
 
@@ -175,7 +180,7 @@ def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provid
 
     provider = (provider or get_provider()).lower()
 
-    max_tokens = min(500 + num_requirements * 1000, 120000)
+    max_tokens = min(500 + num_requirements * 1500, 120000)
 
     img_b64 = None
     if context and context.image_bytes:
@@ -240,7 +245,7 @@ def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provid
             })
 
         
-        client = openai_lib.OpenAI(api_key=api_key)
+        client = openai_lib.OpenAI(api_key=key)
         response = client.chat.completions.create(
             model=openai_model,
             max_completion_tokens=max_tokens,
@@ -302,6 +307,8 @@ def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, con
                 CONTEXTUAL_CRITERIA 
                 if criteria_type == "contextual" 
                 else STRUCTURAL_CRITERIA)]
+
+    call_context = None
     try:
         if criteria_type == "structural":
             system_prompt = _build_structural_prompt(requirements)
@@ -310,13 +317,11 @@ def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, con
         elif criteria_type == "contextual":
             system_prompt = _build_contextual_prompt(requirements)
             user_prompt = f"{_build_context_prompt(context)}\n{_build_requirement_prompt(requirements)}"
+            call_context = context # pass in context only to contextual 
         else: 
             return _error_result(requirements, f"Invalid criteria type", criteria_order)
         
-        result_text = _call_ai(user_prompt, system_prompt, len(requirements), provider, api_key, context)
-
-        print(result_text)
-
+        result_text = _call_ai(user_prompt, system_prompt, len(requirements), provider, api_key, call_context)
         if result_text.startswith("```"):
             lines = result_text.split("\n")
             inner = lines[1:]
@@ -428,6 +433,38 @@ def _error_result(requirements: List[Dict], error_msg: str, criteria: list[Dict]
     }
 
 
+def _batch_requirements(requirements: List[Dict],
+    criteria_type: str,
+    context: AnalysisContext,
+    provider: str = None,
+    api_key: str = None,
+    batch_size: int = 10) -> Dict:
+
+    batches = [requirements[i:i+batch_size] for i in range(0, len(requirements), batch_size)]
+
+    combined_results = {}
+
+    for batch_number, batch in enumerate(batches, start=1):
+        print(
+            f"{criteria_type} batch "
+            f"{batch_number}/{len(batches)} "
+            f"({len(batch)} requirements)"
+        )
+
+        batch_result = analyze_requirements_typed(
+            batch,
+            criteria_type,
+            context,
+            provider,
+            api_key,
+        )
+
+        combined_results.update(batch_result)
+
+    return combined_results
+
+
+
 def analyze_all_requirements(
     requirements: List[Dict],
     context: AnalysisContext,
@@ -441,11 +478,6 @@ def analyze_all_requirements(
         session_id = str(uuid.uuid4())[:8]
 
     analyzed: List[Optional[Dict]] = [None] * len(requirements)
-
-    print("system context:",context.system_context)
-    print("conops:", context.conops)
-    print("img type:", context.image_file_type)
-    print("img length:", len(context.image_bytes))
 
     if not requirements:
          return {
@@ -463,9 +495,11 @@ def analyze_all_requirements(
     else: 
         num_workers = 2
 
+    BATCH_SIZE = 2
+
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        structural_future = executor.submit(analyze_requirements_typed, requirements, "structural", context, provider, api_key)
-        contextual_future = executor.submit(analyze_requirements_typed, requirements, "contextual", context, provider, api_key)
+        structural_future = executor.submit(_batch_requirements, requirements, "structural", context, provider, api_key, BATCH_SIZE)
+        contextual_future = executor.submit(_batch_requirements, requirements, "contextual", context, provider, api_key, BATCH_SIZE)
 
         try: 
             structural_result = structural_future.result()
@@ -473,7 +507,7 @@ def analyze_all_requirements(
             # add results together and add to analyzed 
             analyzed = _merge_result_categories(requirements, structural_result, contextual_result)
             for req in analyzed:
-                n = sum(1 for ev in req.get("criteria_evaluations", []))
+                n = sum(1 for ev in req.get("criteria_evaluations", []) if not ev.get("satisfied", True))
                 print(f"  [{req['req_id']}] done — {n} criteria violated")
         except Exception as e:
             analyzed = list(_error_result(requirements, str(e), [cid for cid in CRITERIA_ORDER if cid not in ("A1", "A11")]).values())
@@ -504,7 +538,8 @@ def _merge_result_categories(requirements, structural_result, contextual_result)
         if contextual.get("error"):
             errors.append(contextual["error"])
 
-        if not evaluations and not errors: # A1 if no violations
+        has_violation = any(not ev.get("satisfied", True) for ev in evaluations)
+        if not has_violation and not errors: # A1 if no violations
             a1 = CRITERIA["A1"]
             evaluations = [{
                 "criterion_id": "A1",
