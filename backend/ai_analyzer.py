@@ -18,6 +18,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
+import base64
+
+@dataclass
+class AnalysisContext:
+    system_context: str = ""
+    conops: str = ""
+    image_bytes: bytes | None = None 
+    image_file_type: str | None = None
 
 # ---------------------------------------------------------------------------
 # Load A-criteria definitions from incose_rules.json
@@ -131,7 +140,26 @@ def _build_requirement_prompt(requirements: list[Dict]):
     return f"Requirements to evaluate:\n{requirements_text}"
 
 def _build_context_prompt(context: str):
-    return f"""System Context: {context.strip() if context else "No additional context provided."}"""
+    parts = []
+
+    if context.system_context:
+        parts.append(
+            f"Project Context:\n{context.system_context.strip()}"
+        )
+
+    if context.conops:
+        parts.append(
+            f"Concept of Operations:\n{context.conops.strip()}"
+        )
+
+    if context.image_bytes:
+        parts.append(
+            "The attached image is the Concept of Operations figure for this system. "
+            "Treat it as part of the provided project context and use it together "
+            "with the text when evaluating the requirements."
+        )
+
+    return "\n\n".join(parts)
 
 # ---------------------------------------------------------------------------
 # Single-requirement analysis
@@ -142,23 +170,42 @@ def get_provider() -> str:
     return os.getenv("AI_PROVIDER", "anthropic").strip().lower()
 
 
-def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provider: str = None, api_key: str = None) -> str:
+def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provider: str = None, api_key: str = None, context: AnalysisContext | None = None) -> str:
     """Route to Anthropic, OpenAI, or Ollama. Uses env vars by default."""
 
     provider = (provider or get_provider()).lower()
 
     max_tokens = min(500 + num_requirements * 1000, 120000)
 
+    img_b64 = None
+    if context and context.image_bytes:
+        img_b64 = base64.b64encode(context.image_bytes).decode("utf-8")
+
     if provider == "anthropic":
         anthropic_model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5")
         key = api_key or os.getenv("ANTHROPIC_API_KEY", "").strip()
         if not key:
             raise ValueError("ANTHROPIC_API_KEY is not set")
-        client = anthropic.Anthropic(api_key=api_key)
+        
+        user_content = []
+        if img_b64:
+            user_content.append({
+                "type": "image",
+                "source" : {
+                    "type": "base64",
+                    "media_type": context.image_file_type,
+                    "data": img_b64
+                }
+            })
+        user_content.append({
+                            "type": "text",
+                            "text": user_prompt,
+                        })
+        
+        client = anthropic.Anthropic(api_key=key)
         response = client.messages.create(
             model=anthropic_model,
             max_tokens=max_tokens,
-            thinking={"type": "disabled"},
             system=[
                 {
                     "type": "text",
@@ -166,12 +213,7 @@ def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provid
                     "cache_control": {"type": "ephemeral"}
                 }
             ],
-            messages=[{"role": "user", "content": [
-                {
-                    "type": "text",
-                    "text": user_prompt,
-                }
-            ]}],
+            messages=[{"role": "user", "content": user_content}],
         )
         return response.content[0].text.strip()
 
@@ -180,12 +222,28 @@ def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provid
         key = api_key or os.getenv("OPENAI_API_KEY", "").strip()
         if not key:
             raise ValueError("OPENAI_API_KEY is not set in .env")
+
+        user_content = [
+            {
+                "type": "text",
+                "text": user_prompt
+            }
+        ]
+        if img_b64:
+            user_content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": (
+                        f"data:{context.image_file_type};base64,{img_b64}"
+                    )
+                }
+            })
+
+        
         client = openai_lib.OpenAI(api_key=api_key)
         response = client.chat.completions.create(
             model=openai_model,
             max_completion_tokens=max_tokens,
-            temperature=0.1,
-            reasoning_effort="none",
             response_format={"type": "json_object"},
             messages=[
                 {
@@ -194,7 +252,7 @@ def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provid
                 },
                 {
                     "role": "user", 
-                    "content": user_prompt
+                    "content": user_content
                 }
             ],
         )
@@ -203,6 +261,12 @@ def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provid
     elif provider == "ollama": # local model option 
         ollama_url = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
         ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
+
+        user_content = {"role": "user",
+                        "content": user_prompt}
+        if img_b64:
+            user_content["images"] = [img_b64]
+
         payload = json.dumps({
             "model": ollama_model,
             "format": "json",
@@ -211,10 +275,7 @@ def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provid
                     "role": "system",
                     "content": system_prompt
                 },
-                {
-                    "role": "user", 
-                    "content": user_prompt
-                }
+                user_content
             ],
             "stream": False,
             "options": {
@@ -236,7 +297,7 @@ def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provid
         raise ValueError(f"Unknown AI_PROVIDER: '{provider}'. Must be anthropic, openai, or ollama.")
 
 
-def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, context: str, provider: str = None, api_key: str = None) -> Dict:
+def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, context: AnalysisContext, provider: str = None, api_key: str = None) -> Dict:
     criteria_order = [c["criterion_id"] for c in (
                 CONTEXTUAL_CRITERIA 
                 if criteria_type == "contextual" 
@@ -252,7 +313,7 @@ def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, con
         else: 
             return _error_result(requirements, f"Invalid criteria type", criteria_order)
         
-        result_text = _call_ai(user_prompt, system_prompt, len(requirements), provider, api_key)
+        result_text = _call_ai(user_prompt, system_prompt, len(requirements), provider, api_key, context)
 
         print(result_text)
 
@@ -369,7 +430,7 @@ def _error_result(requirements: List[Dict], error_msg: str, criteria: list[Dict]
 
 def analyze_all_requirements(
     requirements: List[Dict],
-    context: str,
+    context: AnalysisContext,
     session_id: str = None,
     provider: str = None,
     api_key: str = None,
@@ -381,11 +442,17 @@ def analyze_all_requirements(
 
     analyzed: List[Optional[Dict]] = [None] * len(requirements)
 
+    print("system context:",context.system_context)
+    print("conops:", context.conops)
+    print("img type:", context.image_file_type)
+    print("img length:", len(context.image_bytes))
+
     if not requirements:
          return {
                 "session_id": session_id,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "context": context,
+                "context": context.system_context,
+                "conops": context.conops,
                 "requirements": analyzed,
             }
 
@@ -414,7 +481,8 @@ def analyze_all_requirements(
     return {
         "session_id": session_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "context": context,
+        "context": context.system_context,
+        "conops": context.conops,
         "requirements": analyzed,
     }
 

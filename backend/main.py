@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 import asyncio
 from urllib.parse import urlparse
 import json
+from ai_analyzer import AnalysisContext
 
 from requirements_parser import parse_requirements, validate_requirements
 from ai_analyzer import analyze_all_requirements
@@ -365,13 +366,14 @@ async def upload_files(
     request: Request,
     requirements_file: UploadFile = File(...),
     context_file: Optional[UploadFile] = File(None),
+    conops_file: Optional[UploadFile] = File(None),
+    conops_img: Optional[UploadFile] = File(None)
 ):
     """Upload requirements and optional context files, start analysis."""
     # The client may pick which provider to use, but never supplies a key —
     # keys come only from the server environment. Any X-API-Key header is
     # ignored so a caller can't bill an arbitrary key through this deployment.
     provider = request.headers.get('X-AI-Provider', '').strip().lower() or os.getenv('AI_PROVIDER', 'anthropic')
-
 
     if provider not in SUPPORTED_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"Unsupported AI provider '{provider}'.")
@@ -397,8 +399,33 @@ async def upload_files(
     # Read context file if provided (in memory only)
     context_text = ""
     if context_file:
-        ctx_content = await context_file.read()
-        context_text = ctx_content.decode('utf-8', errors='replace')
+        context_text = (await context_file.read()).decode('utf-8', errors='replace')
+
+    # Read ConOps file if provided 
+    conops_text = ""
+    if conops_file:
+        conops_text = (await conops_file.read()).decode('utf-8', errors='replace')
+
+    # Read ConOps image if provided 
+    SUPPORTED_IMAGE_TYPES = {
+        "image/png",
+        "image/jpeg",
+        "image/webp"
+    }
+
+    conops_img_bytes = None
+    conops_img_type = None
+    if conops_img:
+        conops_img_type = conops_img.content_type
+        if conops_img_type not in SUPPORTED_IMAGE_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid ConOps Image type."
+            )
+        conops_img_bytes = await conops_img.read()
+        
+
+    analysis_context = AnalysisContext(system_context=context_text, conops=conops_text, image_bytes=conops_img_bytes, image_file_type=conops_img_type)
 
     # Parse requirements
     req_text = content.decode('utf-8', errors='replace')
@@ -412,7 +439,7 @@ async def upload_files(
     try:
         analysis = analyze_all_requirements(
             requirements,
-            context_text,
+            analysis_context,
             session_id=session_id,
             provider=provider,
             api_key=api_key,
@@ -429,7 +456,6 @@ async def upload_files(
                 sum(1 for ev in req.get('criteria_evaluations', []) if not ev.get('satisfied', True))
                 for req in analysis['requirements']
             ),
-            "rag_enhanced": analysis.get('rag_enhanced', False)
         }
     except Exception as e:
         print(f"ERROR: {str(e)}")
