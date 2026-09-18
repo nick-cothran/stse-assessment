@@ -2,9 +2,9 @@
 
 This app reads a list of engineering requirements and checks each one against seven INCOSE quality criteria (A2, A3, A4, A5, A6, A9, A10). It uses Claude to do the checking. A reviewer can then accept or fix each problem it finds and download a corrected Word document.
 
-This README explains **how to put the app online using Render**. Render is a hosting service. It takes the code from GitHub, builds it, and gives you a web address anyone can open.
+This README explains **how to run the application locally with docker**, as well as **how to put the app online using Render**. Render is a hosting service. It takes the code from GitHub, builds it, and gives you a web address anyone can open.
 
-> ⚠️ **Warning:** the text people upload gets sent to Anthropic for analysis. Do not upload anything sensitive, proprietary, export-controlled, or classified.
+> ⚠️ **Warning:** When the provider is set to Anthropic or OpenAI, the text people upload gets sent to a third party for analysis. Do not upload anything sensitive, proprietary, export-controlled, or classified to these providers.
 
 ---
 
@@ -13,24 +13,30 @@ This README explains **how to put the app online using Render**. Render is a hos
 You need three things:
 
 1. **A GitHub account** — this is where the code lives.
-2. **A Render account** — sign up free at https://render.com and connect it to GitHub.
-3. At least one of the following
-    - **An Anthropic API key with credit on it** — this is what pays for the analysis.
-    - Ollama installed and running on your computer; this is for local analysis.
+2. **A Render account** (If hosting on Render) — sign up free at https://render.com and connect it to GitHub.
+3. **Docker installed on your computer** (If you want to run containerized) - install at https://docker.com.
+4. At least one of the following
+    - **An Anthropic API key with credit on it** - this is what pays for the analysis when set to the Anthropic provider.
+    - **An OpenAI API key with credit on it** - this is what pays for the analysis.
+    - **Ollama** installed and running on your computer; this is for local analysis.
 
 The API key is yours. Every analysis anyone runs on your site is charged to your account, so keep the key private.
 
 ---
 
-## Step 1 — Put the code in your own GitHub account
+## Step 1 - Put the code in your own GitHub account
 
 Open this repository on GitHub and click **Fork**. That makes your own copy.
 
 Do this even if you have access to the original. Render needs to read the code, and if you use someone else's copy they could change or delete it without telling you.
 
----
 
-## Step 2 — Get an Anthropic API key
+
+## Step 2 - Set up providers (at least one)
+
+
+
+### Option A - Get an Anthropic API key
 
 1. Go to https://console.anthropic.com and make an account.
 2. Click **API Keys**, then **Create Key**.
@@ -39,9 +45,18 @@ Do this even if you have access to the original. Render needs to read the code, 
 
 While you are there, set a **monthly spending limit**. The app has no way to stop people using it too much, so this limit is your safety net.
 
+### Option B - Get an OpenAI API key
+
+1. Go to https://platform.openai.com and make an account.
+2. Click **API Keys**, then **Create new secret key**.
+3. Copy the key. It starts with `sk-ant-`. Save it somewhere safe — the site will not show it to you again.
+4. Go to **Home → Billing** and add credit. $5 is enough to try it out.
+
 ---
 
-## Step 3 — Install Ollama
+### Option C - Install Ollama (only if not running in docker)
+If running dockerized, you can skip this section, just ensure to use the ollama/ollama-nvidia profile when running docker compose. Ollama costs no money to use, however since it is running the model on your machine, you need good hardware - ideally an Nvidia GPU.  
+
 1. Install Ollama from their [website](https://ollama.com).
 2. Install your desired local model using `ollama pull modelName` in your terminal.
 3. In your .env file, ensure the OLLAMA_MODEL is the same as the model you installed.
@@ -51,7 +66,45 @@ Your Ollama model should now show as an option you can choose from on the websit
 
 ---
 
-## Step 4 — Create the service on Render
+## Running Locally
+To run the prototype locally, you have two options: with docker or natively. 
+
+### Running with docker (recommended)
+
+To run with docker, first ensure Docker is installed and the Docker engine is actively running. Next run the following command from the project's root directory, depending on your use case.
+
+To run without Ollama support:
+```
+docker compose up --build
+```
+
+To run with Ollama on the CPU:
+```
+docker compose --profile ollama up --build
+```
+
+To run with Ollama on an Nvidia GPU:
+```
+docker compse --profile ollama-nvidia up --build
+```
+
+---
+
+### Running it on your own computer
+
+This is only recommended for development. You first need Python and Node.js installed. Next run:
+
+```
+python run.py
+```
+
+The first time, it installs everything and creates a file called `backend/.env`. To run the app again, run `python run.py` again. The app opens at http://localhost:3001.
+
+Leave `ACCESS_CODE` empty in that file and it will not ask you for a code.
+
+---
+
+## Creating the service on Render
 
 In Render, click **New +**, then **Web Service**. Pick your forked repository.
 
@@ -84,27 +137,24 @@ cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
 
 ---
 
-## Step 5 — Add the settings
+### Add the settings
 
 Still on the same page, find the **Environment Variables** section. Add each of these. Click "Add Environment Variable" for each new one.
 
 | Name | Value | What it does |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | your `sk-ant-...` key | Pays for the analysis. Required. |
 | `ACCESS_CODE` | a password you invent, like `orion-review-2026` | Stops strangers from using your site and spending your money. **Do not skip this.** |
 | `AI_PROVIDER` | `anthropic` | Tells the app to use Claude by default. |
 | `PYTHON_VERSION` | `3.12` | Which Python to use. |
 | `NODE_VERSION` | `20` | Which Node to use. Also makes Node available when building. |
 | `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` | `1` | Stops the build downloading 150 MB of test browsers it will never use. |
 | `PYTHONUNBUFFERED` | `1` | Makes the app's messages show up in the Render log. Without it they get held in memory and you never see them. |
-| `OLLAMA_URL` | The URL that Ollama points to, by default this should be `http://localhost:11434` | Connects the application to Ollama for local analysis.
-| `OLLAMA_MODEL` | The Ollama model you want to use | Chooses the Ollama model for local analysis. 
 
 Now click **Create Web Service**. The first build takes about 5 minutes.
 
 ---
 
-## Step 6 — Check that it worked
+### Check that it worked
 
 Watch the log while it builds. You are looking for these lines:
 
@@ -128,7 +178,7 @@ You should get a message like *"Done! 8 criteria violated across 10 requirements
 
 ---
 
-## If something goes wrong
+## Troubleshooting
 
 **It says "0 criteria violated" for every requirement**
 
@@ -166,8 +216,6 @@ Your key is fine but your Anthropic account has run out of credit. Add more at h
 
 ## Things to know
 
-**Do not change `anthropic==0.94.0` to a newer version** without testing an analysis afterwards. Newer versions of that library reject a setting the code uses. When that happens the app does not crash — it quietly reports every requirement as clean, which is much worse than an error message.
-
 **The free plan goes to sleep** after 15 minutes of no use. The next visitor waits about a minute for it to wake up. The app also keeps everything in memory, so a sleep in the middle of a review can lose the work. If real people are using it, pay for the cheapest plan.
 
 **The access code is one shared password.** Everybody uses the same one. It does not track who did what and it does not limit spending. If it leaks, change it in the Environment Variables and tell your users the new one.
@@ -176,19 +224,9 @@ Your key is fine but your Anthropic account has run out of credit. Add more at h
 
 ---
 
-## Running it on your own computer (optional)
 
-You only need this if you want to change the code. You need Python and Node.js installed.
 
-```
-python run.py
-```
 
-The first time, it installs everything and creates a file called `backend/.env`. Open that file, put your API key in it, save, and run `python run.py` again. The app opens at http://localhost:3001.
-
-Leave `ACCESS_CODE` empty in that file and it will not ask you for a code.
-
----
 
 ## The research work
 
