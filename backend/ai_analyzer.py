@@ -304,8 +304,7 @@ def _call_ai(user_prompt: str, system_prompt: str, num_requirements: int, provid
         )
         with urllib.request.urlopen(req, timeout=600) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        print("Ollama prompt tokens:", data.get("prompt_eval_count"))
-        print("Ollama output tokens:", data.get("eval_count"))
+
         return data["message"]["content"].strip()
 
     else:
@@ -455,11 +454,6 @@ def _batch_requirements(requirements: List[Dict],
     combined_results = {}
 
     for batch_number, batch in enumerate(batches, start=1):
-        print(
-            f"{criteria_type} batch "
-            f"{batch_number}/{len(batches)} "
-            f"({len(batch)} requirements)"
-        )
 
         batch_result = analyze_requirements_typed(
             batch,
