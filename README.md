@@ -13,7 +13,7 @@ git clone https://github.com/jshefa/requirements-assistant-app.git
 ```
 docker compose up --build
 ```
-To run with local model support, run with the ollama profiles as shown below. The `ollama` profile runs on the CPU, while the `ollama-nvidia` profile runs on the GPU for nvidia graphics cards. The latter is recommended if the hardware is available as CPU analysis is significantly slower than GPU. Running with local model support for the first time will take a few minutes, as the LLM model has to be installed.
+To run with local model support, run with the ollama profiles as shown below. The `ollama` profile runs on the CPU, while the `ollama-nvidia` profile runs on the GPU for nvidia graphics cards. The latter is recommended if the necessary hardware is available, as CPU analysis is significantly slower than GPU. Running with local model support for the first time will take a few minutes, as the LLM model has to be installed. Read [the troubleshooting section](#troubleshooting-ollama-issues) for more information. 
 
 ```
 # for CPU analysis 
@@ -57,3 +57,11 @@ instance item-33335 : req:Requirement [
 
 5. Choose your context files if desired; this is optional. You can upload a separate .txt system context document, a .txt ConOps document, and a related ConOps image. 
 6. Click analyze when you are ready. The analysis time will depend on your number of requirements and provider. For a small requirements file of 10 requirements you can expect a runtime of under a minute, however a file with hundreds of requirements can take over 10 minutes. 
+
+## Troubleshooting Ollama issues
+
+The main cause of analysis failures is inadequate computer hardware. The default model, Gemma 3 12b, requires at least 8gb of RAM when running on the CPU. When running containerized, Docker gives 50% of your system's RAM to Ollama, so you will need at least 16GB of RAM with the default configuration. While it is possible to change Docker's allocation percentage, the most advisable thing to do on low end hardware is to switch the model to Gemma 3 4b. This significantly reduces memory usage and improves speed, however the analysis quality may be somewhat lower. To make this change, follow the following steps:
+
+1. Navigate to the Docker compose file `compose.yml`. It is in the project's main directory.
+2. Locate the following portion at the beginning of the file: `x-model: &ollama_model "gemma3:12b"`.
+3. Replace "gemma3:12b" with "gemma3:4b". The final line should be `x-model: &ollama_model "gemma3:4b"`.
