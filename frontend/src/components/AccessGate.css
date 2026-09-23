@@ -1,0 +1,54 @@
+/* Access gate (password screen).
+*/
+
+.gate-screen {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  padding: var(--space-6);
+}
+
+.gate-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  width: 100%;
+  max-width: 420px;
+  box-shadow: var(--shadow-lg);
+}
+
+.gate-card h2 {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xl);
+  letter-spacing: -0.01em;
+}
+
+.gate-card input[type="password"] {
+  display: block;
+  width: 100%;
+  padding: 10px var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  font-family: inherit;
+  letter-spacing: 0.1em;
+  transition: border-color var(--transition);
+}
+
+.gate-card input[type="password"]:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.gate-checking {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 640px) {
+  .gate-card {
+    padding: var(--space-5);
+  }
+}

@@ -1,0 +1,101 @@
+/* Design tokens — the single source of truth for colour, space, radius and type.
+      Every value below should come from here: add a token rather than a raw hex/px.
+*/
+
+:root {
+  /* --- Surfaces --------------------------------------------------- */
+  --color-bg: #f1f5f9;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8fafc;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+
+  /* --- Text ------------------------------------------------------- */
+  --color-text: #1e293b;
+  --color-text-muted: #64748b;
+  --color-text-subtle: #94a3b8;
+  --color-text-inverse: #ffffff;
+
+  /* --- Brand ------------------------------------------------------ */
+  --color-primary: #2563eb;
+  --color-primary-hover: #1d4ed8;
+  --color-primary-active: #1e40af;
+  --color-primary-subtle: #eff6ff;
+  --color-primary-border: #bfdbfe;
+  --color-primary-text: #1e40af;
+
+  /* --- Status: success / satisfied -------------------------------- */
+  --color-success: #16a34a;
+  --color-success-strong: #15803d;
+  --color-success-subtle: #f0fdf4;
+  --color-success-border: #bbf7d0;
+  --color-success-accent: #22c55e;
+
+  /* --- Status: warning / violated --------------------------------- */
+  --color-warning: #b45309;
+  --color-warning-strong: #92400e;
+  --color-warning-subtle: #fffbeb;
+  --color-warning-border: #fde68a;
+  --color-warning-accent: #f59e0b;
+
+  /* --- Status: danger / current text ------------------------------ */
+  --color-danger: #dc2626;
+  --color-danger-strong: #991b1b;
+  --color-danger-subtle: #fef2f2;
+  --color-danger-border: #fecaca;
+
+  /* --- Status: neutral / preview ---------------------------------- */
+  --color-neutral: #6b7280;
+  --color-highlight-subtle: #fefce8;
+  --color-highlight-border: #fde047;
+  --color-highlight-text: #713f12;
+
+  /* --- Header ----------------------------------------------------- */
+  --color-header-bg: #1e293b;
+
+  /* --- Spacing (4px base) ----------------------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* --- Radii ------------------------------------------------------ */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 999px;
+
+  /* --- Type scale -------------------------------------------------
+     Deliberately few steps, with real gaps between them, so dense
+     review screens still have a readable hierarchy.               */
+  --text-xs: 0.6875rem; /* 11px — eyebrow labels, meta           */
+  --text-sm: 0.8125rem; /* 13px — secondary / supporting text    */
+  --text-base: 0.9375rem; /* 15px — body, requirement text         */
+  --text-lg: 1.0625rem; /* 17px — card titles                    */
+  --text-xl: 1.375rem; /* 22px — page and app titles            */
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-tight: 1.35;
+  --leading-normal: 1.55;
+  --leading-relaxed: 1.7;
+
+  /* --- Elevation --------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md:
+    0 1px 3px rgba(15, 23, 42, 0.09), 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-lg: 0 4px 12px rgba(15, 23, 42, 0.1);
+
+  /* --- Motion & focus ---------------------------------------------- */
+  --transition: 150ms ease;
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.35);
+
+  --content-width: 1000px;
+}

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import CriterionCard from './CriterionCard'
+import './RequirementCard.css'
 
 export default function RequirementCard({ requirement, feedbackState, onFeedbackChange }) {
   const evals = requirement.criteria_evaluations || []

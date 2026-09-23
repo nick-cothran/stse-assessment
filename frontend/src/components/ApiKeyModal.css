@@ -1,3 +1,5 @@
+/* API key modal overlay and dialog. */
+
 .modal-blur {
   position: fixed;
   background: rgba(15, 23, 42, 0.65);

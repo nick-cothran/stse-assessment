@@ -5,6 +5,7 @@ import DownloadPage from './pages/DownloadPage'
 import SessionSetupPage from './pages/SessionSetupPage'
 import ConsensusPage from './pages/ConsensusPage'
 import AccessGate from './components/AccessGate'
+import './App.css'
 
 function Header() {
   const location = useLocation()

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import './CriterionCard.css'
 
 export default function CriterionCard({ evaluation, originalText, feedback, onFeedbackChange }) {
   const [showSatisfiedEdit, setShowSatisfiedEdit] = useState(false)

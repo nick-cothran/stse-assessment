@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import ApiKeyModal from "../components/ApiKeyModal/ApiKeyModal";
+import ApiKeyModal from "../components/ApiKeyModal";
+import './UploadPage.css'
 
 function ProgressBar({ active, pct }) {
   if (!active) return null;

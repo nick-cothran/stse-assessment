@@ -1,0 +1,30 @@
+/* Review progress bar and submit controls.
+*/
+
+.progress-bar-container {
+  margin-bottom: 12px;
+}
+
+.progress-info {
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.progress-bar {
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #2563eb;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.btn-submit {
+  font-size: 0.9rem;
+}
