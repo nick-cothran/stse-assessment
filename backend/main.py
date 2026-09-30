@@ -456,6 +456,7 @@ async def upload_files(
                 sum(1 for ev in req.get('criteria_evaluations', []) if not ev.get('satisfied', True))
                 for req in analysis['requirements']
             ),
+            "failed_count": sum(1 for req in analysis['requirements'] if req.get('error'))
         }
     except Exception as e:
         print(f"ERROR: {str(e)}")

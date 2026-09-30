@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import ApiKeyModal from "../components/ApiKeyModal/ApiKeyModal";
+import ApiKeyModal from "../components/ApiKeyModal";
+import './UploadPage.css'
 
 function ProgressBar({ active, pct }) {
   if (!active) return null;
@@ -22,8 +23,6 @@ function ProgressBar({ active, pct }) {
 export default function UploadPage() {
   const navigate = useNavigate();
   const [provider, setProvider] = useState("");
-  // Providers this deployment can actually use — the server reports only the
-  // ones it holds a key for. Users never enter a key.
   const [providers, setProviders] = useState([]);
   const [keyedProviders, setKeyedProviders] = useState([]);
   const [configLoaded, setConfigLoaded] = useState(false);
@@ -123,7 +122,7 @@ export default function UploadPage() {
       setBarPct(100);
       const violated = res.data.violations_count;
       setProgress(
-        `Done! ${violated} criteria violated across ${res.data.requirements_count} requirements.`,
+        `Done! ${violated} criteria violated across ${res.data.requirements_count} requirements${(res.data.failed_count && ` with ${res.data.failed_count} errors.`)}`,
       );
       setTimeout(() => setSessionResult(res.data.session_id), 400);
     } catch (err) {

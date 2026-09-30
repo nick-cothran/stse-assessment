@@ -338,44 +338,42 @@ def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, con
             result_text = "\n".join(inner)
 
         result = json.loads(result_text)
-        evals = result.get("individualEvaluations", {})
+        violated_criteria = result.get("individualEvaluations", {})
 
-        req_text_by_id = {r["id"]: r["text"] for r in requirements}
+        req_text_by_id = {r["id"]: r["text"] for r in requirements} 
         overall_evaluation = {}
-        expected_reqs = {r["id"] for r in requirements}
-        present_reqs = set()
+        expected_reqs = {r["id"] for r in requirements} # the ids that should be present in the response
+        present_reqs = set() # the reqs that the ai returned, missing ones are errors
 
-        for req_id in evals:
-            cleaned = []
-            present = set()
+        for req_id in violated_criteria:
+            req_criteria = []
+            present_criteria = set()
             if req_id not in expected_reqs: 
                 continue # discard invalid requirements 
             present_reqs.add(req_id)
-            curr_evals = evals[req_id]
-            for ev in curr_evals:
-                cid = ev.get("criterion_id", "")
-                if cid not in criteria_order:
+
+            curr_criteria = violated_criteria[req_id]
+
+            for criterion in curr_criteria: # process each criterion for the current requirement 
+                cid = criterion.get("criterion_id", "")
+                if cid not in criteria_order: # guards against hallucinated criteria 
                     continue
-                present.add(cid)
+                present_criteria.add(cid)
 
-                affected_text = ev.get("affected_text") or None
+                affected_text = criterion.get("affected_text") or None
+                suggested = criterion.get("suggested_replacement") or "[No suggestion provided — review manually]"
 
-                suggested = ev.get("suggested_replacement") or None
-                # Fallback: if violated but no suggestion, flag it clearly
-                if not suggested:
-                    suggested = "[No suggestion provided — review manually]"
-
-                cleaned.append({
+                req_criteria.append({
                     "criterion_id": cid,
                     "criterion_name": CRITERIA_NAMES.get(cid, ""),
-                    "explanation": ev.get("explanation", ""),
+                    "explanation": criterion.get("explanation", ""),
                     "satisfied": False,
                     "affected_text": affected_text,
                     "suggested_replacement": suggested,
                 })
-            for cid in criteria_order:
-                if cid not in present:
-                    cleaned.append({
+            for cid in criteria_order: # add missing criteria so that the frontend can display them
+                if cid not in present_criteria:
+                    req_criteria.append({
                         "criterion_id": cid,
                         "criterion_name": CRITERIA_NAMES.get(cid, ""),
                         "satisfied": True,
@@ -383,63 +381,40 @@ def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, con
                         "affected_text": None,
                         "suggested_replacement": None,
                     })
-            cleaned.sort(key=lambda e: criteria_order.index(e["criterion_id"]))
+            req_criteria.sort(key=lambda e: criteria_order.index(e["criterion_id"]))
 
-            overall_evaluation[req_id] = {"req_id": req_id,
-                                             "original_text": req_text_by_id[req_id],
-                                             "criteria_evaluations": cleaned}
+            overall_evaluation[req_id] = {
+                                            "req_id": req_id,
+                                            "original_text": req_text_by_id[req_id],
+                                            "criteria_evaluations": req_criteria
+                                         }
             
         missing_reqs = expected_reqs - present_reqs
         for missing in missing_reqs: # return an error for each requirement that the AI missed
-            overall_evaluation[missing] = _req_missing_result(missing, req_text_by_id[missing], criteria_order)
+            overall_evaluation[missing] = _req_missing_result(missing, req_text_by_id[missing])
 
         return overall_evaluation
 
     except json.JSONDecodeError as e:
-        return _error_result(requirements, f"Failed to parse AI response: {e}", criteria_order)
+        return _error_result(requirements, f"Failed to parse AI response: {e}")
     except Exception as e:
-        print("error: ", str(e))
-        return _error_result(requirements, f"Analysis failed: {e}", criteria_order)
+        return _error_result(requirements, f"Analysis failed: {e}")
 
-def _req_missing_result(req_id: str, text: str, criteria: list[Dict]) -> Dict:
+def _req_missing_result(req_id: str, text: str) -> Dict:
     return {
         "req_id": req_id,
         "original_text": text,
-        "criteria_evaluations": [
-            {
-                "criterion_id": cid,
-                "criterion_name": CRITERIA_NAMES.get(cid, ""),
-                "satisfied": True,
-                "explanation": "Could not evaluate — analysis failed.",
-                "affected_text": None,
-                "suggested_replacement": None,
-            }
-            for cid in criteria
-        ],
+        "error": "Could not evaluate - AI analysis missed requirement"
     }
 
-def _error_result(requirements: List[Dict], error_msg: str, criteria: list[Dict]) -> Dict:
+def _error_result(requirements: List[Dict], error_msg: str) -> Dict:
     return {
         requirement["id"] : {     
             "req_id": requirement["id"],
             "original_text": requirement["text"],
-            "error": error_msg,
-            "criteria_evaluations": [
-                {
-                    "criterion_id": cid,
-                    "criterion_name": CRITERIA_NAMES.get(cid, ""),
-                    "satisfied": True,
-                    "explanation": "Could not evaluate — analysis failed.",
-                    "affected_text": None,
-                    "suggested_replacement": None,
-                }
-                for cid in criteria
-            ],
-            "suggested_full_text": requirement["text"],
+            "error": error_msg
         } for requirement in requirements
-        
     }
-
 
 def _batch_requirements(requirements: List[Dict],
     criteria_type: str,
@@ -452,7 +427,7 @@ def _batch_requirements(requirements: List[Dict],
 
     combined_results = {}
 
-    for batch_number, batch in enumerate(batches, start=1):
+    for _, batch in enumerate(batches, start=1):
 
         batch_result = analyze_requirements_typed(
             batch,
@@ -465,8 +440,6 @@ def _batch_requirements(requirements: List[Dict],
         combined_results.update(batch_result)
 
     return combined_results
-
-
 
 def analyze_all_requirements(
     requirements: List[Dict],
@@ -510,10 +483,12 @@ def analyze_all_requirements(
             # add results together and add to analyzed 
             analyzed = _merge_result_categories(requirements, structural_result, contextual_result)
             for req in analyzed:
+                if req.get("error"):
+                    print(f"{req['req_id']} FAILED - {req['error']}")
                 n = sum(1 for ev in req.get("criteria_evaluations", []) if not ev.get("satisfied", True))
                 print(f"  [{req['req_id']}] done — {n} criteria violated")
         except Exception as e:
-            analyzed = list(_error_result(requirements, str(e), [cid for cid in CRITERIA_ORDER if cid not in ("A1", "A11")]).values())
+            analyzed = list(_error_result(requirements, str(e)))
 
     return {
         "session_id": session_id,
