@@ -317,6 +317,10 @@ def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, con
                 else STRUCTURAL_CRITERIA)]
 
     call_context = None
+
+    if criteria_type == "structural":
+        return _error_result(requirements, "Example error here", criteria_order)
+    
     try:
         if criteria_type == "structural":
             system_prompt = _build_structural_prompt(requirements)
@@ -327,7 +331,7 @@ def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, con
             user_prompt = f"{_build_context_prompt(context)}\n{_build_requirement_prompt(requirements)}"
             call_context = context # pass in context only to contextual 
         else: 
-            return _error_result(requirements, f"Invalid criteria type", criteria_order)
+            return _error_result(requirements, f"Invalid criteria type", criteria_order, criteria_order)
         
         result_text = _call_ai(user_prompt, system_prompt, len(requirements), provider, api_key, call_context)
         if result_text.startswith("```"):
@@ -391,28 +395,28 @@ def analyze_requirements_typed(requirements: List[Dict], criteria_type: str, con
             
         missing_reqs = expected_reqs - present_reqs
         for missing in missing_reqs: # return an error for each requirement that the AI missed
-            overall_evaluation[missing] = _req_missing_result(missing, req_text_by_id[missing])
+            overall_evaluation[missing] = _req_missing_result(missing, req_text_by_id[missing], criteria_order)
 
         return overall_evaluation
 
     except json.JSONDecodeError as e:
-        return _error_result(requirements, f"Failed to parse AI response: {e}")
+        return _error_result(requirements, f"Failed to parse AI response: {e}", criteria_order)
     except Exception as e:
-        return _error_result(requirements, f"Analysis failed: {e}")
+        return _error_result(requirements, f"Analysis failed: {e}", criteria_order)
 
-def _req_missing_result(req_id: str, text: str) -> Dict:
+def _req_missing_result(req_id: str, text: str, criterias_missed) -> Dict:
     return {
         "req_id": req_id,
         "original_text": text,
-        "error": "Could not evaluate - AI analysis missed requirement"
+        "error": f"Could not evaluate - AI analysis missed requirement. Criterias {', '.join(criterias_missed)} not evaluated."
     }
 
-def _error_result(requirements: List[Dict], error_msg: str) -> Dict:
+def _error_result(requirements: List[Dict], error_msg: str, criterias_missed) -> Dict:
     return {
         requirement["id"] : {     
             "req_id": requirement["id"],
             "original_text": requirement["text"],
-            "error": error_msg
+            "error": f"{error_msg} - Criterias {', '.join(criterias_missed)} not evaluated."
         } for requirement in requirements
     }
 
