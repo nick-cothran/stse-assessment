@@ -1,3 +1,5 @@
+import './FeedbackControls.css'
+
 export default function FeedbackControls({
   totalViolations,
   reviewedCount,

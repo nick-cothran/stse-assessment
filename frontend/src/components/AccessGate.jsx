@@ -6,6 +6,7 @@ import {
   clearAccessCode,
   onAccessRejected,
 } from "../accessCode";
+import './AccessGate.css'
 
 /**
  * Blocks the app behind the shared access code when the server requires one.

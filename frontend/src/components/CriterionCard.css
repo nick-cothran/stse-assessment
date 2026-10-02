@@ -1,0 +1,245 @@
+/* Criterion review card: verdict states, text comparison, actions.
+*/
+
+.criterion-card {
+  border: 1px solid;
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
+.criterion-card.satisfied {
+  border-color: var(--color-success-border);
+  border-left-color: var(--color-success-accent);
+  background: var(--color-success-subtle);
+}
+
+.criterion-card.violated {
+  border-color: var(--color-warning-border);
+  border-left-color: var(--color-warning-accent);
+  background: var(--color-warning-subtle);
+}
+
+.criterion-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.criterion-badge {
+  color: var(--color-text-inverse);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-2);
+  font-weight: var(--weight-bold);
+  font-size: var(--text-xs);
+  letter-spacing: 0.02em;
+}
+
+.criterion-card.satisfied .criterion-badge {
+  background: var(--color-success);
+}
+
+.criterion-card.violated .criterion-badge {
+  background: var(--color-warning);
+}
+
+.criterion-name {
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-sm);
+}
+
+.criterion-status {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+}
+
+.criterion-card.satisfied .criterion-status {
+  color: var(--color-success-strong);
+}
+
+.criterion-card.violated .criterion-status {
+  color: var(--color-warning-strong);
+}
+
+.criterion-explanation {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: var(--leading-normal);
+}
+
+/* Current vs suggested text comparison */
+.text-compare {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+/* Named compare-box rather than text-box: the consensus dashboard already
+   owns .text-box with a different layout and palette. */
+.compare-box {
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.compare-box.current {
+  flex: 0 0 auto;
+  max-width: 45%;
+  background: var(--color-danger-subtle);
+  border: 1px solid var(--color-danger-border);
+}
+
+.compare-box.suggested {
+  flex: 1;
+  min-width: 160px;
+  background: var(--color-primary-subtle);
+  border: 1px solid var(--color-primary-border);
+}
+
+.compare-box .eyebrow {
+  margin-bottom: 2px;
+}
+
+.compare-box.current .eyebrow {
+  color: var(--color-danger-strong);
+}
+
+.compare-box.suggested .eyebrow {
+  color: var(--color-primary-text);
+}
+
+.compare-box-content {
+  font-size: var(--text-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: var(--leading-normal);
+  word-break: break-word;
+}
+
+.compare-box.current .compare-box-content {
+  color: var(--color-danger-strong);
+}
+
+.compare-box.suggested .compare-box-content {
+  color: var(--color-primary-text);
+}
+
+@media (max-width: 640px) {
+  .compare-box.current, .compare-box.suggested {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+}
+
+/* Accept / Reject / Modify */
+.criterion-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  padding: var(--space-1) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+  background: var(--color-surface);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  transition: all var(--transition);
+}
+
+.action-btn.accept {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.action-btn.reject {
+  border-color: var(--color-neutral);
+  color: var(--color-neutral);
+}
+
+.action-btn.modify {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.action-btn:hover:not(.selected) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.action-btn.selected {
+  color: var(--color-text-inverse);
+  font-weight: var(--weight-bold);
+}
+
+.action-btn.accept.selected {
+  background: var(--color-success);
+}
+
+.action-btn.reject.selected {
+  background: var(--color-neutral);
+}
+
+.action-btn.modify.selected {
+  background: var(--color-primary);
+}
+
+/* Inline text inputs inside a criterion card */
+.criterion-field {
+  margin-bottom: var(--space-3);
+}
+
+.criterion-field label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  margin-bottom: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+/* Live preview of an in-progress edit */
+.edit-preview {
+  background: var(--color-highlight-subtle);
+  border: 1px solid var(--color-highlight-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.edit-preview .eyebrow {
+  color: var(--color-highlight-text);
+}
+
+.edit-preview p {
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--color-text);
+}
+
+/* Subtle disclosure toggle ("Add notes", "Suggest a change anyway") */
+.disclosure-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+  padding: 0;
+  text-decoration: underline;
+  transition: color var(--transition);
+}
+
+.disclosure-btn:hover {
+  color: var(--color-text);
+}
+
+.disclosure-field {
+  margin-top: var(--space-2);
+}

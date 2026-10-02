@@ -1,0 +1,7 @@
+/* Review page layout. (.requirements-list is an unstyled grouping hook —
+      intentionally no rules; adding visual styles here would change the UI.)
+*/
+
+.centered {
+  text-align: center;
+}

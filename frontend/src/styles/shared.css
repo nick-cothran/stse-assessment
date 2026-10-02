@@ -1,0 +1,332 @@
+/* Shared primitives — classes rendered by two or more files (buttons, message
+      bars, form primitives, generic layout). Single-file styles live next to their
+      JSX. Cascade position is set in main.jsx; do not reorder these imports.
+*/
+
+/* Upload Page */
+.upload-page {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--space-10);
+}
+
+.upload-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  width: 100%;
+  max-width: 560px;
+  box-shadow: var(--shadow-md);
+}
+
+.upload-card h2 {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xl);
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-6);
+  line-height: var(--leading-normal);
+}
+
+.form-group {
+  margin-bottom: var(--space-5);
+}
+
+.form-group label {
+  display: block;
+  font-weight: var(--weight-semibold);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.form-group input[type="file"] {
+  display: block;
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--transition),
+    background var(--transition);
+}
+
+.form-group input[type="file"]:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-subtle);
+}
+
+.hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+  margin-top: var(--space-1);
+  line-height: var(--leading-normal);
+}
+
+@media (max-width: 640px) {
+  .upload-page {
+    padding-top: var(--space-4);
+  }
+  .upload-card {
+    padding: var(--space-5);
+  }
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: var(--color-text-inverse);
+  border: 1px solid var(--color-primary);
+  padding: 10px var(--space-6);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  width: 100%;
+  transition:
+    background var(--transition),
+    border-color var(--transition),
+    transform var(--transition),
+    box-shadow var(--transition);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: var(--color-primary-active);
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+.btn-primary:disabled {
+  background: var(--color-border-strong);
+  border-color: var(--color-border-strong);
+  color: var(--color-surface);
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary);
+  padding: 10px var(--space-6);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  width: 100%;
+  transition:
+    background var(--transition),
+    transform var(--transition);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--color-primary-subtle);
+}
+
+.btn-secondary:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn-secondary:disabled {
+  color: var(--color-text-subtle);
+  border-color: var(--color-border);
+  cursor: not-allowed;
+}
+
+.error-msg {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  border: 1px solid var(--color-danger-border);
+  line-height: var(--leading-normal);
+}
+
+.progress-msg {
+  background: var(--color-primary-subtle);
+  color: var(--color-primary-text);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  border: 1px solid var(--color-primary-border);
+  line-height: var(--leading-normal);
+}
+
+.loading {
+  text-align: center;
+  padding: 60px;
+  color: #666;
+  font-size: 1.1rem;
+}
+
+.error-page {
+  text-align: center;
+  padding: 60px;
+}
+
+/* Review Page */
+.review-page {
+  padding-bottom: 40px;
+}
+
+.review-header {
+  margin-bottom: 20px;
+}
+
+.review-header h2 {
+  margin-bottom: 4px;
+}
+
+/* Feedback Controls */
+.feedback-controls {
+  background: white;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.rule-badge {
+  background: #1a1a2e;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.stat-box {
+  background: #f9fafb;
+  border-radius: 8px;
+  padding: 12px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 80px;
+}
+
+.stat-box .stat-number {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+
+.stat-box .stat-label {
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.action-badge {
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.action-badge.accept {
+  background: #f0fdf4;
+  color: #16a34a;
+}
+
+.action-badge.reject {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.action-badge.modify {
+  background: #fff7ed;
+  color: #ea580c;
+}
+
+/* Small uppercase label above a quoted block */
+.eyebrow {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-1);
+  color: var(--color-text-muted);
+}
+
+.text-input {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  background: var(--color-surface);
+  color: var(--color-text);
+  transition: border-color var(--transition);
+}
+
+.text-input:hover {
+  border-color: var(--color-primary-border);
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.section-block {
+  margin-bottom: var(--space-6);
+}
+
+/* Role pill: lead / senior / junior */
+.role-badge {
+  color: var(--color-text-inverse);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.role-badge.lead {
+  background: var(--color-primary);
+}
+
+.role-badge.senior {
+  background: #ea580c;
+}
+
+.role-badge.junior {
+  background: var(--color-neutral);
+}
+
+.stat-box.accent-unanimous {
+  border-bottom: 3px solid var(--color-success);
+}
+
+.stat-box.accent-majority {
+  border-bottom: 3px solid #ea580c;
+}
+
+.stat-box.accent-conflict {
+  border-bottom: 3px solid var(--color-danger);
+}
+
+.upload-card.wide {
+  max-width: 640px;
+}

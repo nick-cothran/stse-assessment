@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import RequirementCard from '../components/RequirementCard'
 import FeedbackControls from '../components/FeedbackControls'
+import './ReviewPage.css'
 
 export default function ReviewPage() {
   const { sessionId } = useParams()
